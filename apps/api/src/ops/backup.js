@@ -22,6 +22,8 @@ try{
  const dump=path.join(work,'database.dump');const uploads=path.join(work,'uploads.tar.gz');
  await run('pg_dump',['--format=custom','--no-owner','--no-acl','--file',dump,databaseUrl]);
  await fs.mkdir(uploadDir,{recursive:true});
+ const entries=await fs.readdir(uploadDir,{withFileTypes:true});
+ for(const entry of entries){if(entry.isSymbolicLink()||(!entry.isFile()&&!entry.isDirectory()))throw new Error('Uploads directory contains an unsupported filesystem entry: '+entry.name);}
  await run('tar',['-czf',uploads,'-C',uploadDir,'.']);
  const manifest={format:'archive-ly-backup-v1',createdAt:new Date().toISOString(),files:{'database.dump':await digest(dump),'uploads.tar.gz':await digest(uploads)}};
  await fs.writeFile(path.join(work,'manifest.json'),JSON.stringify(manifest,null,2)+'\n',{mode:0o600});

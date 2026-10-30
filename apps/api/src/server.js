@@ -7,6 +7,7 @@ import { pool } from './db/pool.js';
 import authRoutes from './routes/auth.js';
 import documentRoutes from './routes/documents.js';
 import categoryRoutes from './routes/categories.js';
+import adminRoutes from './routes/admin.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -26,6 +27,7 @@ app.get('/health', async (_req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/admin', adminRoutes);
 app.use((req, res) => res.status(404).json({ error: 'المسار غير موجود' }));
 app.use((err, _req, res, _next) => {
   console.error(err);

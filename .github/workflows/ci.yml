@@ -14,4 +14,6 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm test
+      - run: node --check apps/api/src/ops/backup.js
+      - run: node --check apps/api/src/ops/restore.js
       - run: npm run build:web

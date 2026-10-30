@@ -46,7 +46,7 @@
 تتطلب الأوامر وجود PostgreSQL client وأداة `tar` (مضمّنتان في صورة Docker الخاصة بالمشروع).
 
 - نسخة يدوية: `docker compose --profile tools run --rm backup`.
-- استعادة نسخة: `docker compose --profile tools run --rm --entrypoint npm backup -- --workspace apps/api run restore -- /backups/اسم-النسخة.tar.gz`.
+- استعادة نسخة: `docker compose --profile tools run --rm --entrypoint npm backup --workspace apps/api run restore -- /backups/اسم-النسخة.tar.gz`.
 - تحقق النظام من SHA-256 قبل الاستعادة. الاستعادة تستبدل قاعدة البيانات الحالية؛ خذ نسخة منفصلة أولاً.
 - النسخ تحفظ في volume اسمه `archive_backups`، ويجب تصديرها دورياً إلى تخزين خارجي منفصل أو مشفر.
 

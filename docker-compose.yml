@@ -25,6 +25,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in your environment}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
       UPLOAD_DIR: /app/uploads
+    command: ["sh","-c","npm --workspace apps/api run db:migrate && npm --workspace apps/api start"]
     ports:
       - "4000:4000"
     volumes:

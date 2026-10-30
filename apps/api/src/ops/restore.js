@@ -15,11 +15,18 @@ if(!databaseUrl||!archive){console.error('Usage: npm run restore -- /absolute/pa
 const work=await fs.mkdtemp(path.join(os.tmpdir(),'archive-ly-restore-'));
 let oldUploads='';
 try{
+ const outerListing=(await run('tar',['-tzf',path.resolve(archive)])).stdout.trim().split('\\n').filter(Boolean);
+ const allowedOuter=new Set(['database.dump','uploads.tar.gz','manifest.json']);
+ if(outerListing.length!==3||outerListing.some(name=>!allowedOuter.has(name)))throw new Error('Backup archive contains unexpected paths');
  await run('tar',['-xzf',path.resolve(archive),'-C',work]);
  const manifest=JSON.parse(await fs.readFile(path.join(work,'manifest.json'),'utf8'));
  if(manifest.format!=='archive-ly-backup-v1'||!manifest.files?.['database.dump']||!manifest.files?.['uploads.tar.gz'])throw new Error('Unsupported or incomplete backup manifest');
  for(const name of ['database.dump','uploads.tar.gz'])if(await digest(path.join(work,name))!==manifest.files[name])throw new Error('SHA-256 verification failed for '+name);
  const stagedUploads=path.join(work,'restored-uploads');await fs.mkdir(stagedUploads);
+ const uploadEntries=(await run('tar',['-tzf',path.join(work,'uploads.tar.gz')])).stdout.split('\\n').filter(Boolean);
+ for(const entry of uploadEntries){const normalized=path.posix.normalize(entry.replace(/^\\.\\//,''));if(path.posix.isAbsolute(entry)||normalized==='..'||normalized.startsWith('../'))throw new Error('Upload archive contains an unsafe path');}
+ const verbose=(await run('tar',['-tvzf',path.join(work,'uploads.tar.gz')])).stdout.split('\\n').filter(Boolean);
+ if(verbose.some(line=>!['-','d'].includes(line[0])))throw new Error('Upload archive contains a link or special file');
  await run('tar',['-xzf',path.join(work,'uploads.tar.gz'),'-C',stagedUploads]);
  console.log('Checksums verified. Restoring database...');
  await run('pg_restore',['--clean','--if-exists','--no-owner','--no-acl','--single-transaction','--dbname',databaseUrl,path.join(work,'database.dump')]);

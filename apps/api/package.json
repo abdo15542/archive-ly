@@ -1,11 +1,12 @@
 {
   "name": "@archive-ly/api",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
+    "worker:ocr": "node src/workers/ocr.js",
     "test": "node --test",
     "db:migrate": "node src/db/migrate.js"
   },

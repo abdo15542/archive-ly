@@ -16,4 +16,6 @@ jobs:
       - run: npm test
       - run: node --check apps/api/src/ops/backup.js
       - run: node --check apps/api/src/ops/restore.js
+      - run: node --check apps/api/src/ops/retention.js
+      - run: node --check apps/api/src/ops/scheduler.js
       - run: npm run build:web

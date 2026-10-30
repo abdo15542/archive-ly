@@ -36,7 +36,7 @@ try{
  const uploadsArchive=path.join(work,'uploads.tar.gz');
  const uploadEntries=(await run('tar',['-tzf',uploadsArchive])).stdout.split('\n').filter(Boolean);
  for(const entry of uploadEntries){
-  const normalized=path.posix.normalize(entry.replace(/^\.\//,''));
+  const normalized=path.posix.normalize(entry.startsWith('./')?entry.slice(2):entry);
   if(path.posix.isAbsolute(entry)||normalized==='..'||normalized.startsWith('../'))throw new Error('Upload archive contains an unsafe path');
  }
  const verbose=(await run('tar',['-tvzf',uploadsArchive])).stdout.split('\n').filter(Boolean);

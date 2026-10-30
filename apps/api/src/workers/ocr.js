@@ -6,23 +6,6 @@ import path from 'node:path';
 import os from 'node:os';
 import { pool } from '../db/pool.js';
 
-const run=async(command,args,timeout=180000)=>{
- await new Promise((resolve,reject)=>{
-  const child=spawn(command,args,{stdio:['ignore','pipe','pipe']});
-  let stdout='',stderr='';
-  const timer=setTimeout(()=>{child.kill('SIGKILL');reject(new Error(command+' timed out'));},timeout);
-  child.stdout.on('data',d=>stdout+=d.toString());
-  child.stderr.on('data',d=>stderr+=d.toString());
-  child.on('error',e=>{clearTimeout(timer);reject(e);});
-  child.on('close',code=>{clearTimeout(timer);code===0?resolve():reject(new Error(stderr.slice(-2000)||command+' exited '+code));});
-  child.stdoutText=()=>stdout;
-  child.stderrText=()=>stderr;
-  child.on('close',()=>{child.stdoutText=()=>stdout;});
-  run.lastOutput=()=>stdout;
- });
- return run.lastOutput();
-};
-
 async function commandOutput(command,args,timeout=180000){
  return new Promise((resolve,reject)=>{
   const child=spawn(command,args,{stdio:['ignore','pipe','pipe']});

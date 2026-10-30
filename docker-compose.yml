@@ -65,6 +65,26 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  backup-scheduler:
+    profiles: ["tools"]
+    build: .
+    restart: unless-stopped
+    command: ["npm","--workspace","apps/api","run","backup:scheduler"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://archive:archive_dev_password@db:5432/archive_ly
+      UPLOAD_DIR: /app/uploads
+      BACKUP_DIR: /backups
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+    volumes:
+      - archive_uploads:/app/uploads
+      - archive_backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   archive_pgdata:
   archive_uploads:

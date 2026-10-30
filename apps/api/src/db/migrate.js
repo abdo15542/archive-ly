@@ -51,6 +51,18 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   details JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE TABLE IF NOT EXISTS ocr_jobs (
+  id BIGSERIAL PRIMARY KEY,
+  document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  status VARCHAR(20) NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','processing','completed','failed')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  locked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS ocr_jobs_queue_idx ON ocr_jobs(status, created_at);
+CREATE INDEX IF NOT EXISTS audit_logs_created_idx ON audit_logs(created_at DESC);
 `;
 
 try {

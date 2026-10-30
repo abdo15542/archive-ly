@@ -103,4 +103,21 @@ router.delete('/:id',requireRole('admin','archivist'),async(req,res,next)=>{
   await audit(req.user.sub,'document.deleted',req.params.id,req.ip);res.status(204).end();
  }catch(e){next(e);}
 });
+
+router.patch('/:id/ocr',requireRole('admin','archivist'),async(req,res,next)=>{
+ try{
+  const parsed=z.object({text:z.string().max(2000000)}).strict().safeParse(req.body);
+  if(!parsed.success)return res.status(400).json({error:'نص OCR غير صالح أو يتجاوز الحد المسموح'});
+  const client=await pool.connect();
+  try{
+   await client.query('BEGIN');
+   const updated=await client.query("UPDATE documents SET extracted_text=$2,ocr_status='completed',updated_at=NOW() WHERE id=$1 RETURNING id,title,ocr_status,updated_at",[req.params.id,parsed.data.text]);
+   if(!updated.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'الوثيقة غير موجودة'});}
+   await client.query("INSERT INTO audit_logs(actor_id,action,resource_type,resource_id,ip_address,details) VALUES($1,'document.ocr.corrected','document',$2,$3,$4)",[req.user.sub,req.params.id,req.ip,JSON.stringify({textLength:parsed.data.text.length})]);
+   await client.query('COMMIT');
+   res.json({document:updated.rows[0],message:'تم حفظ النص المصحح'});
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+ }catch(e){next(e);}
+});
+
 export default router;

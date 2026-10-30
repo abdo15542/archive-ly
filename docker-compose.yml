@@ -48,6 +48,24 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  backup:
+    profiles: ["tools"]
+    build: .
+    restart: "no"
+    command: ["npm","--workspace","apps/api","run","backup"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://archive:archive_dev_password@db:5432/archive_ly
+      UPLOAD_DIR: /app/uploads
+      BACKUP_DIR: /backups
+    volumes:
+      - archive_uploads:/app/uploads:ro
+      - archive_backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
 volumes:
   archive_pgdata:
   archive_uploads:
+  archive_backups:

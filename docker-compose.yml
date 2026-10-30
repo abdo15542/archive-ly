@@ -60,7 +60,7 @@ services:
       UPLOAD_DIR: /app/uploads
       BACKUP_DIR: /backups
     volumes:
-      - archive_uploads:/app/uploads:ro
+      - archive_uploads:/app/uploads
       - archive_backups:/backups
     depends_on:
       db:

@@ -1,6 +1,6 @@
 {
   "name": "archive-ly",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Arabic electronic document archiving system",
   "workspaces": ["apps/api", "apps/web"],
@@ -8,6 +8,7 @@
     "dev": "npm --workspace apps/api run dev",
     "dev:web": "npm --workspace apps/web run dev",
     "start": "npm --workspace apps/api start",
+    "worker:ocr": "npm --workspace apps/api run worker:ocr",
     "test": "npm --workspace apps/api test",
     "build:web": "npm --workspace apps/web run build",
     "db:migrate": "npm --workspace apps/api run db:migrate"

@@ -82,7 +82,7 @@ router.post('/:id/ocr/retry',requireRole('admin','archivist'),async(req,res,next
  try{
   const r=await pool.query('SELECT id FROM documents WHERE id=$1',[req.params.id]);if(!r.rowCount)return res.status(404).json({error:'الوثيقة غير موجودة'});
   await pool.query("UPDATE documents SET ocr_status='pending',updated_at=NOW() WHERE id=$1",[req.params.id]);
-  await pool.query("INSERT INTO ocr_jobs(document_id,status) VALUES($1,'queued') ON CONFLICT DO NOTHING",[req.params.id]);
+  await pool.query("INSERT INTO ocr_jobs(document_id,status) SELECT $1,'queued' WHERE NOT EXISTS (SELECT 1 FROM ocr_jobs WHERE document_id=$1 AND status IN ('queued','processing'))",[req.params.id]);
   await audit(req.user.sub,'document.ocr.retry',req.params.id,req.ip);
   res.status(202).json({status:'queued'});
  }catch(e){next(e);}

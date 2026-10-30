@@ -67,12 +67,8 @@ router.get('/ocr/queue',async(req,res,next)=>{
   let where='';
   if(status){values.push(status);where='WHERE j.status=$1';}
   values.push(limit,(page-1)*limit);
-  const jobs=await pool.query(`SELECT j.id,j.document_id,d.title AS document_title,j.status,j.attempts,j.last_error,j.locked_at,j.created_at,j.updated_at
-    FROM ocr_jobs j JOIN documents d ON d.id=j.document_id
-    ${where}
-    ORDER BY CASE j.status WHEN 'failed' THEN 0 WHEN 'processing' THEN 1 WHEN 'queued' THEN 2 ELSE 3 END,j.created_at ASC
-    LIMIT $ ${values.length-1} OFFSET ${values.length}`.replace('LIMIT $ ','LIMIT 
-),values);
+  const limitParam=values.length-1,offsetParam=values.length;
+  const jobs=await pool.query('SELECT j.id,j.document_id,d.title AS document_title,j.status,j.attempts,j.last_error,j.locked_at,j.created_at,j.updated_at FROM ocr_jobs j JOIN documents d ON d.id=j.document_id '+where+' ORDER BY CASE j.status WHEN \'failed\' THEN 0 WHEN \'processing\' THEN 1 WHEN \'queued\' THEN 2 ELSE 3 END,j.created_at ASC LIMIT $'+limitParam+' OFFSET $'+offsetParam,values);
   const countValues=status?[status]:[];
   const count=await pool.query(`SELECT COUNT(*)::int AS total FROM ocr_jobs j ${status?'WHERE j.status=$1':''}`,countValues);
   res.json({summary:summary.rows[0],jobs:jobs.rows,pagination:{page,limit,total:count.rows[0].total}});

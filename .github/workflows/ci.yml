@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [main]
 jobs:
-  api:
+  test-and-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,3 +14,4 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm test
+      - run: npm run build:web

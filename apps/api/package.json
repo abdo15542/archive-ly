@@ -10,7 +10,8 @@
     "test": "node --test",
     "db:migrate": "node src/db/migrate.js",
     "backup": "node src/ops/backup.js",
-    "restore": "node src/ops/restore.js"
+    "restore": "node src/ops/restore.js",
+    "backup:scheduler": "node src/ops/scheduler.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

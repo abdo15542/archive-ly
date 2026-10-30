@@ -8,7 +8,9 @@
     "start": "node src/server.js",
     "worker:ocr": "node src/workers/ocr.js",
     "test": "node --test",
-    "db:migrate": "node src/db/migrate.js"
+    "db:migrate": "node src/db/migrate.js",
+    "backup": "node src/ops/backup.js",
+    "restore": "node src/ops/restore.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

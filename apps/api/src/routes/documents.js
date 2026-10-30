@@ -51,12 +51,18 @@ router.post('/',requireRole('admin','archivist'),(req,res,next)=>{
    if(!parsed.success){fs.unlinkSync(req.file.path);return res.status(400).json({error:'بيانات الوثيقة غير صحيحة'});}
    if(!validFile(req.file.path,req.file.mimetype)){fs.unlinkSync(req.file.path);return res.status(415).json({error:'محتوى الملف لا يطابق نوعه المعلن'});}
    const sha=crypto.createHash('sha256').update(fs.readFileSync(req.file.path)).digest('hex'),d=parsed.data;
-   const r=await pool.query(`INSERT INTO documents(title,document_number,subject,issuing_entity,document_date,category_id,original_name,stored_name,mime_type,file_size,sha256,created_by)
-   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-   RETURNING id,title,document_number,subject,issuing_entity,document_date,category_id,original_name,mime_type,file_size,ocr_status,created_at`,
-   [d.title,d.documentNumber||null,d.subject||null,d.issuingEntity||null,d.documentDate||null,d.categoryId||null,req.file.originalname,req.file.filename,req.file.mimetype,req.file.size,sha,req.user.sub]);
-   await pool.query('INSERT INTO ocr_jobs(document_id) VALUES($1)',[r.rows[0].id]);
-   await audit(req.user.sub,'document.created',r.rows[0].id,req.ip);
+   const client=await pool.connect();
+   let r;
+   try{
+    await client.query('BEGIN');
+    r=await client.query(`INSERT INTO documents(title,document_number,subject,issuing_entity,document_date,category_id,original_name,stored_name,mime_type,file_size,sha256,created_by)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+    RETURNING id,title,document_number,subject,issuing_entity,document_date,category_id,original_name,mime_type,file_size,ocr_status,created_at`,
+    [d.title,d.documentNumber||null,d.subject||null,d.issuingEntity||null,d.documentDate||null,d.categoryId||null,req.file.originalname,req.file.filename,req.file.mimetype,req.file.size,sha,req.user.sub]);
+    await client.query('INSERT INTO ocr_jobs(document_id) VALUES($1)',[r.rows[0].id]);
+    await client.query("INSERT INTO audit_logs(actor_id,action,resource_type,resource_id,ip_address) VALUES($1,'document.created','document',$2,$3)",[req.user.sub,r.rows[0].id,req.ip]);
+    await client.query('COMMIT');
+   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
    res.status(201).json({document:r.rows[0],ocr:{status:'queued'}});
   }catch(e){try{fs.unlinkSync(req.file.path);}catch{}next(e);}
  });

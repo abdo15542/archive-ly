@@ -15,5 +15,38 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://archive:archive_dev_password@db:5432/archive_ly
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in your environment}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      UPLOAD_DIR: /app/uploads
+    ports:
+      - "4000:4000"
+    volumes:
+      - archive_uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+  ocr:
+    build: .
+    restart: unless-stopped
+    command: ["npm","--workspace","apps/api","run","worker:ocr"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://archive:archive_dev_password@db:5432/archive_ly
+      UPLOAD_DIR: /app/uploads
+      TESSERACT_LANG: ara+eng
+      OCR_MAX_PDF_PAGES: 15
+    volumes:
+      - archive_uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
 volumes:
   archive_pgdata:
+  archive_uploads:

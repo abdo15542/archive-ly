@@ -18,14 +18,30 @@ router.post('/register', async (req, res, next) => {
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'بيانات التسجيل غير صحيحة' });
     const { fullName, email, password } = parsed.data;
-    const count = await pool.query('SELECT COUNT(*)::int AS count FROM users');
-    if (count.rows[0].count > 0) return res.status(403).json({ error: 'إنشاء الحسابات متاح للمسؤول فقط بعد إنشاء أول مسؤول' });
-    const hash = await bcrypt.hash(password, 12);
-    const result = await pool.query(
-      'INSERT INTO users(full_name,email,password_hash,role) VALUES($1,$2,$3,$4) RETURNING id,full_name,email,role',
-      [fullName, email.toLowerCase(), hash, 'admin']
-    );
-    const user = result.rows[0];
+    const client = await pool.connect();
+    let user;
+    try {
+      await client.query('BEGIN');
+      // Serialize first-admin registration so concurrent requests cannot create two initial admins.
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('archive-ly-first-admin'))");
+      const count = await client.query('SELECT COUNT(*)::int AS count FROM users');
+      if (count.rows[0].count > 0) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'إنشاء الحسابات متاح للمسؤول فقط بعد إنشاء أول مسؤول' });
+      }
+      const hash = await bcrypt.hash(password, 12);
+      const result = await client.query(
+        'INSERT INTO users(full_name,email,password_hash,role) VALUES($1,$2,$3,$4) RETURNING id,full_name,email,role',
+        [fullName, email.toLowerCase(), hash, 'admin']
+      );
+      user = result.rows[0];
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
     const token = jwt.sign({ sub: user.id, role: user.role, email: user.email }, process.env.JWT_SECRET, { expiresIn: '8h' });
     res.status(201).json({ user, token });
   } catch (error) {

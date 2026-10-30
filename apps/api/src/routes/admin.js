@@ -48,4 +48,52 @@ router.get('/audit-logs',async(req,res,next)=>{
   res.json({logs:r.rows});
  }catch(e){next(e);}
 });
+
+router.get('/ocr/queue',async(req,res,next)=>{
+ try{
+  const page=Math.max(1,Number.parseInt(req.query.page||'1',10)||1);
+  const limit=Math.min(100,Math.max(1,Number.parseInt(req.query.limit||'25',10)||25));
+  const allowed=new Set(['queued','processing','completed','failed']);
+  const status=allowed.has(String(req.query.status||''))?String(req.query.status):null;
+  const summary=await pool.query(`SELECT
+    COUNT(*) FILTER (WHERE status='queued')::int AS queued,
+    COUNT(*) FILTER (WHERE status='processing')::int AS processing,
+    COUNT(*) FILTER (WHERE status='completed')::int AS completed,
+    COUNT(*) FILTER (WHERE status='failed')::int AS failed,
+    MIN(created_at) FILTER (WHERE status='queued') AS oldest_queued_at,
+    MIN(locked_at) FILTER (WHERE status='processing') AS oldest_processing_lock
+    FROM ocr_jobs`);
+  const values=[];
+  let where='';
+  if(status){values.push(status);where='WHERE j.status=$1';}
+  values.push(limit,(page-1)*limit);
+  const jobs=await pool.query(`SELECT j.id,j.document_id,d.title AS document_title,j.status,j.attempts,j.last_error,j.locked_at,j.created_at,j.updated_at
+    FROM ocr_jobs j JOIN documents d ON d.id=j.document_id
+    ${where}
+    ORDER BY CASE j.status WHEN 'failed' THEN 0 WHEN 'processing' THEN 1 WHEN 'queued' THEN 2 ELSE 3 END,j.created_at ASC
+    LIMIT $ ${values.length-1} OFFSET ${values.length}`.replace('LIMIT $ ','LIMIT 
+),values);
+  const countValues=status?[status]:[];
+  const count=await pool.query(`SELECT COUNT(*)::int AS total FROM ocr_jobs j ${status?'WHERE j.status=$1':''}`,countValues);
+  res.json({summary:summary.rows[0],jobs:jobs.rows,pagination:{page,limit,total:count.rows[0].total}});
+ }catch(e){next(e);}
+});
+
+router.post('/ocr/jobs/:id/retry',async(req,res,next)=>{
+ const jobId=Number(req.params.id);
+ if(!Number.isSafeInteger(jobId)||jobId<1)return res.status(400).json({error:'رقم مهمة OCR غير صالح'});
+ const client=await pool.connect();
+ try{
+  await client.query('BEGIN');
+  const current=await client.query('SELECT id,document_id,status FROM ocr_jobs WHERE id=$1 FOR UPDATE',[jobId]);
+  if(!current.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'مهمة OCR غير موجودة'});}
+  if(current.rows[0].status!=='failed'){await client.query('ROLLBACK');return res.status(409).json({error:'يمكن إعادة تشغيل المهام الفاشلة فقط'});}
+  await client.query("UPDATE ocr_jobs SET status='queued',attempts=0,last_error=NULL,locked_at=NULL,updated_at=NOW() WHERE id=$1",[jobId]);
+  await client.query("UPDATE documents SET ocr_status='pending',updated_at=NOW() WHERE id=$1",[current.rows[0].document_id]);
+  await client.query("INSERT INTO audit_logs(actor_id,action,resource_type,resource_id,ip_address,details) VALUES($1,'ocr.job.requeued','ocr_job',$2,$3,$4)",[req.user.sub,String(jobId),req.ip,JSON.stringify({documentId:current.rows[0].document_id})]);
+  await client.query('COMMIT');
+  res.status(202).json({jobId,status:'queued',message:'أعيدت المهمة إلى طابور المعالجة'});
+ }catch(e){await client.query('ROLLBACK');next(e);}finally{client.release();}
+});
+
 export default router;

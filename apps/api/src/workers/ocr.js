@@ -28,7 +28,7 @@ async function extractDocument(doc){
  try{
   const prefix=path.join(temp,'page');
   await commandOutput('pdftoppm',['-f','1','-l',String(Number(process.env.OCR_MAX_PDF_PAGES||15)),'-r','180','-png',file,prefix],180000);
-  const pages=(await fs.readdir(temp)).filter(n=>n.endsWith('.png')).sort();
+  const pages=(await fs.readdir(temp)).filter(n=>n.endsWith('.png')).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
   if(!pages.length)throw new Error('لم يمكن تحويل صفحات PDF إلى صور');
   const extracted=[];
   for(const page of pages)extracted.push(await ocrImage(path.join(temp,page)));

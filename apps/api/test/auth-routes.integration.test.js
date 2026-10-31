@@ -16,6 +16,7 @@ test('auth routes and document deletion preserve audit integrity', { skip: !proc
   const { default: authRoutes } = await import('../src/routes/auth.js');
   const { default: documentRoutes } = await import('../src/routes/documents.js');
   const { default: categoryRoutes } = await import('../src/routes/categories.js');
+  const { default: adminRoutes } = await import('../src/routes/admin.js');
   const existing = await pool.query('SELECT COUNT(*)::int AS count FROM users');
   if (existing.rows[0].count > 0) {
     await pool.end();
@@ -29,6 +30,7 @@ test('auth routes and document deletion preserve audit integrity', { skip: !proc
   app.use('/auth', authRoutes);
   app.use('/documents', documentRoutes);
   app.use('/categories', categoryRoutes);
+  app.use('/admin', adminRoutes);
   app.use((error, _req, res, _next) => res.status(500).json({ error: error.message }));
   const server = app.listen(0, '127.0.0.1');
   await new Promise((resolve, reject) => {
@@ -166,6 +168,18 @@ test('auth routes and document deletion preserve audit integrity', { skip: !proc
       [userId, documentId]
     );
     assert.equal(updateAudit.rowCount, 1);
+
+    const auditPage = await fetch(`${base}/admin/audit-logs?action=document.updated&page=1&limit=1`, {
+      headers: { authorization: `Bearer ${loggedIn.token}` }
+    });
+    assert.equal(auditPage.status, 200);
+    const auditPagePayload = await auditPage.json();
+    assert.equal(auditPagePayload.logs.length, 1);
+    assert.equal(auditPagePayload.logs[0].action, 'document.updated');
+    assert.equal(auditPagePayload.pagination.page, 1);
+    assert.equal(auditPagePayload.pagination.limit, 1);
+    assert.ok(auditPagePayload.pagination.total >= 1);
+    assert.ok(auditPagePayload.pagination.totalPages >= 1);
 
     const deleted = await fetch(`${base}/documents/${documentId}`, {
       method: 'DELETE', headers: { authorization: `Bearer ${loggedIn.token}` }

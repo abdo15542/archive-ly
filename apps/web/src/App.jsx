@@ -2,7 +2,7 @@ import {useEffect,useState} from 'react';
 import PdfViewer from './PdfViewer.jsx';
 import {Archive,Search,Upload,FileText,Folder,ShieldCheck,LogOut,RefreshCw,Plus,Users,ClipboardList,UserPlus,Save,RotateCcw,HardDrive} from 'lucide-react';
 
-const API=import.meta.env.VITE_API_URL||'http://localhost:4000';
+const API=(import.meta.env.VITE_API_URL||'').replace(/\/$/,'');
 const formatOcrDate=value=>value?new Date(value).toLocaleString('ar-LY'):'—';
 export default function App(){
  const [token,setToken]=useState(localStorage.getItem('archive_token')||'');

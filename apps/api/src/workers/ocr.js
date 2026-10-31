@@ -50,9 +50,9 @@ async function claim(){
    ORDER BY j.created_at FOR UPDATE OF j SKIP LOCKED LIMIT 1`);
   if(!r.rowCount){await client.query('COMMIT');return null;}
   const job=r.rows[0];
-  await client.query("UPDATE ocr_jobs SET status='processing',attempts=attempts+1,locked_at=NOW(),updated_at=NOW() WHERE id=$1",[job.id]);
+  const claimed=await client.query("UPDATE ocr_jobs SET status='processing',attempts=attempts+1,locked_at=NOW(),updated_at=NOW() WHERE id=$1 RETURNING attempts",[job.id]);
   await client.query("UPDATE documents SET ocr_status='processing',updated_at=NOW() WHERE id=$1",[job.document_id]);
-  await client.query('COMMIT');return job;
+  await client.query('COMMIT');return {...job,attempts:claimed.rows[0].attempts};
  }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
 }
 async function processJob(job){
@@ -61,8 +61,14 @@ async function processJob(job){
   const client=await pool.connect();
   try{
    await client.query('BEGIN');
+   const ownership=await client.query("SELECT status,attempts FROM ocr_jobs WHERE id=$1 FOR UPDATE",[job.id]);
+   if(!ownership.rowCount||ownership.rows[0].status!=='processing'||ownership.rows[0].attempts!==job.attempts){
+    await client.query('ROLLBACK');
+    console.log('OCR result discarded because its lease is no longer current:',job.id);
+    return;
+   }
    await client.query("UPDATE documents SET extracted_text=$2,ocr_status='completed',updated_at=NOW() WHERE id=$1",[job.document_id,text]);
-   await client.query("UPDATE ocr_jobs SET status='completed',last_error=NULL,locked_at=NULL,updated_at=NOW() WHERE id=$1",[job.id]);
+   await client.query("UPDATE ocr_jobs SET status='completed',last_error=NULL,locked_at=NULL,updated_at=NOW() WHERE id=$1 AND status='processing' AND attempts=$2",[job.id,job.attempts]);
    await client.query('COMMIT');
   }catch(error){await client.query('ROLLBACK');throw error;}
   finally{client.release();}
@@ -71,10 +77,14 @@ async function processJob(job){
   const client=await pool.connect();
   try{
    await client.query('BEGIN');
-   const result=await client.query('SELECT attempts FROM ocr_jobs WHERE id=$1 FOR UPDATE',[job.id]);
-   const attempts=result.rows[0]?.attempts||1;
-   const status=attempts>=3?'failed':'queued';
-   await client.query('UPDATE ocr_jobs SET status=$2,last_error=$3,locked_at=NULL,updated_at=NOW() WHERE id=$1',[job.id,status,String(error.message).slice(0,2000)]);
+   const result=await client.query('SELECT status,attempts FROM ocr_jobs WHERE id=$1 FOR UPDATE',[job.id]);
+   if(!result.rowCount||result.rows[0].status!=='processing'||result.rows[0].attempts!==job.attempts){
+    await client.query('ROLLBACK');
+    console.log('OCR failure ignored because its lease is no longer current:',job.id);
+    return;
+   }
+   const status=job.attempts>=3?'failed':'queued';
+   await client.query('UPDATE ocr_jobs SET status=$2,last_error=$3,locked_at=NULL,updated_at=NOW() WHERE id=$1 AND status=\'processing\' AND attempts=$4',[job.id,status,String(error.message).slice(0,2000),job.attempts]);
    await client.query('UPDATE documents SET ocr_status=$2,updated_at=NOW() WHERE id=$1',[job.document_id,status==='failed'?'failed':'pending']);
    await client.query('COMMIT');
   }catch(persistError){

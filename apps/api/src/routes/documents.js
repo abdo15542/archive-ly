@@ -105,11 +105,25 @@ router.get('/:id/file',async(req,res,next)=>{
  }catch(e){next(e);}
 });
 router.delete('/:id',requireRole('admin','archivist'),async(req,res,next)=>{
+ const client=await pool.connect();
+ let storedName;
  try{
-  const r=await pool.query('DELETE FROM documents WHERE id=$1 RETURNING stored_name',[req.params.id]);if(!r.rowCount)return res.status(404).json({error:'الوثيقة غير موجودة'});
-  const filePath=path.join(uploadDir,r.rows[0].stored_name);if(fs.existsSync(filePath))fs.unlinkSync(filePath);
-  await audit(req.user.sub,'document.deleted',req.params.id,req.ip);res.status(204).end();
- }catch(e){next(e);}
+  await client.query('BEGIN');
+  const found=await client.query('SELECT stored_name FROM documents WHERE id=$1 FOR UPDATE',[req.params.id]);
+  if(!found.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'الوثيقة غير موجودة'});}
+  storedName=found.rows[0].stored_name;
+  await client.query('DELETE FROM documents WHERE id=$1',[req.params.id]);
+  await client.query("INSERT INTO audit_logs(actor_id,action,resource_type,resource_id,ip_address) VALUES($1,'document.deleted','document',$2,$3)",[req.user.sub,req.params.id,req.ip]);
+  await client.query('COMMIT');
+ }catch(e){
+  try{await client.query('ROLLBACK');}catch{}
+  return next(e);
+ }finally{client.release();}
+ const filePath=path.join(uploadDir,storedName);
+ try{fs.unlinkSync(filePath);}catch(error){
+  if(error.code!=='ENOENT')console.error('Could not remove archived document file:',{documentId:req.params.id,error});
+ }
+ res.status(204).end();
 });
 
 router.patch('/:id/ocr',requireRole('admin','archivist'),async(req,res,next)=>{

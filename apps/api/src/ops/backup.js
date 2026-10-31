@@ -7,6 +7,9 @@ import os from 'node:os';
 import { sha256File } from './file-hash.js';
 import { fileURLToPath } from 'node:url';
 import { assertSafeUploadTree } from './archive-safety.js';
+import { startOperation, finishOperation } from './operation-log.js';
+import fsSync from 'node:fs';
+import { pool } from '../db/pool.js';
 
 const run=promisify(execFile);
 const here=path.dirname(fileURLToPath(import.meta.url));
@@ -15,11 +18,14 @@ const backupDir=path.resolve(process.env.BACKUP_DIR||path.resolve(here,'../../..
 const databaseUrl=process.env.DATABASE_URL;
 const stamp=new Date().toISOString().replace(/[:.]/g,'-');
 let temporaryOutput='';
+let operation=null;
+let publishedOutput=null;
 
 if(!databaseUrl){console.error('DATABASE_URL is required');process.exit(1);}
 await fs.mkdir(backupDir,{recursive:true});
 const work=await fs.mkdtemp(path.join(os.tmpdir(),'archive-ly-backup-'));
 try{
+ operation=await startOperation('backup',{trigger:process.env.BACKUP_TRIGGER||'manual'});
  const dump=path.join(work,'database.dump');const uploads=path.join(work,'uploads.tar.gz');
  await run('pg_dump',['--format=custom','--no-owner','--no-acl','--file',dump,databaseUrl]);
  await fs.mkdir(uploadDir,{recursive:true});
@@ -34,9 +40,17 @@ try{
  // Publish only a complete archive: rename is atomic because the temporary file is on the same filesystem.
  await fs.rename(temporaryOutput,output);
  temporaryOutput='';
+ publishedOutput=output;
+ const stat=await fs.stat(output);
+ await finishOperation(operation.id,{status:'succeeded',artifactName:path.basename(output),artifactSizeBytes:stat.size,metadata:{sha256:await sha256File(output)}});
  console.log(JSON.stringify({status:'created',file:output,sha256:await sha256File(output),manifest},null,2));
-}catch(error){console.error('Backup failed:',error.stderr||error.message);process.exitCode=1;}
+}catch(error){
+ console.error('Backup failed:',error.stderr||error.message);
+ if(operation)await finishOperation(operation.id,{status:'failed',artifactName:publishedOutput?path.basename(publishedOutput):null,error:error.stderr||error.message}).catch(logError=>console.error('Could not persist backup failure log:',logError.message));
+ process.exitCode=1;
+}
 finally{
  if(temporaryOutput)await fs.rm(temporaryOutput,{force:true});
  await fs.rm(work,{recursive:true,force:true});
+ await pool.end();
 }

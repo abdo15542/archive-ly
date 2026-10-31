@@ -8,6 +8,8 @@ import { sha256File } from './file-hash.js';
 import { validateArchivePaths, validateArchiveTypes, validateBackupEntries } from './archive-safety.js';
 import { restoreWithUploadSwap } from './restore-files.js';
 import { fileURLToPath } from 'node:url';
+import { startOperation, finishOperation } from './operation-log.js';
+import { pool } from '../db/pool.js';
 
 const run=promisify(execFile);
 const here=path.dirname(fileURLToPath(import.meta.url));
@@ -21,7 +23,9 @@ if(!databaseUrl||!archive){
 }
 const work=await fs.mkdtemp(path.join(os.tmpdir(),'archive-ly-restore-'));
 let stageRoot='';
+let operation=null;
 try{
+ operation=await startOperation('restore',{source:path.basename(path.resolve(archive))});
  const archivePath=path.resolve(archive);
  const outerListing=(await run('tar',['-tzf',archivePath])).stdout.split(/\r?\n/).filter(Boolean);
  validateBackupEntries(outerListing);
@@ -51,13 +55,17 @@ try{
   stagedUploads,
   restoreDatabase:()=>run('pg_restore',['--clean','--if-exists','--no-owner','--no-acl','--single-transaction','--dbname',databaseUrl,path.join(work,'database.dump')])
  });
+ const archiveStat=await fs.stat(archivePath);
+ await finishOperation(operation.id,{status:'succeeded',artifactName:path.basename(archivePath),artifactSizeBytes:archiveStat.size,metadata:{createdAt:manifest.createdAt}});
  console.log(JSON.stringify({status:'restored',backup:archivePath,createdAt:manifest.createdAt,uploadDir},null,2));
 }catch(error){
  console.error('Restore failed:',error.stderr||error.message);
+ if(operation)await finishOperation(operation.id,{status:'failed',artifactName:path.basename(path.resolve(archive)),error:error.stderr||error.message}).catch(logError=>console.error('Could not persist restore failure log:',logError.message));
  process.exitCode=1;
 }finally{
  await fs.rm(work,{recursive:true,force:true});
  if(stageRoot)await fs.rm(stageRoot,{recursive:true,force:true}).catch(error=>{
   console.error('Restore staging cleanup required:',error.message);
  });
+ await pool.end();
 }

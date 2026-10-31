@@ -90,6 +90,20 @@ CREATE TABLE IF NOT EXISTS ocr_workers (
   stopped_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS ocr_workers_last_seen_idx ON ocr_workers(last_seen_at DESC);
+
+CREATE TABLE IF NOT EXISTS backup_operations (
+  id BIGSERIAL PRIMARY KEY,
+  operation_type VARCHAR(20) NOT NULL CHECK (operation_type IN ('backup','restore')),
+  status VARCHAR(20) NOT NULL CHECK (status IN ('running','succeeded','failed')),
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  finished_at TIMESTAMPTZ,
+  duration_ms BIGINT,
+  artifact_name TEXT,
+  artifact_size_bytes BIGINT CHECK (artifact_size_bytes IS NULL OR artifact_size_bytes >= 0),
+  error_message TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+CREATE INDEX IF NOT EXISTS backup_operations_started_idx ON backup_operations(started_at DESC, id DESC);
 `;
 
 try {

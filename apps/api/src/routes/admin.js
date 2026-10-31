@@ -70,6 +70,28 @@ router.get('/audit-logs',async(req,res,next)=>{
  }catch(e){next(e);}
 });
 
+router.get('/backup-operations',async(req,res,next)=>{
+ try{
+  const parsedPage=Number.parseInt(req.query.page||'1',10);
+  const parsedLimit=Number.parseInt(req.query.limit||'25',10);
+  const page=Math.min(1000000,Math.max(1,Number.isSafeInteger(parsedPage)?parsedPage:1));
+  const limit=Math.min(100,Math.max(1,Number.isSafeInteger(parsedLimit)?parsedLimit:25));
+  const allowedTypes=new Set(['backup','restore']);
+  const allowedStatuses=new Set(['running','succeeded','failed']);
+  const values=[];let where='WHERE 1=1';
+  if(allowedTypes.has(String(req.query.type||''))){values.push(String(req.query.type));where+=` AND operation_type=${values.length}`;}
+  if(allowedStatuses.has(String(req.query.status||''))){values.push(String(req.query.status));where+=` AND status=${values.length}`;}
+  const count=await pool.query(`SELECT COUNT(*)::int AS total FROM backup_operations ${where}`,values);
+  values.push(limit,(page-1)*limit);
+  const result=await pool.query(
+   `SELECT id,operation_type,status,started_at,finished_at,duration_ms,artifact_name,artifact_size_bytes,error_message,metadata
+    FROM backup_operations ${where} ORDER BY started_at DESC,id DESC LIMIT ${values.length-1} OFFSET ${values.length}`,
+   values
+  );
+  res.json({operations:result.rows,pagination:{page,limit,total:count.rows[0].total,totalPages:Math.ceil(count.rows[0].total/limit)}});
+ }catch(e){next(e);}
+});
+
 router.get('/ocr/queue',async(req,res,next)=>{
  try{
   const page=Math.max(1,Number.parseInt(req.query.page||'1',10)||1);

@@ -66,3 +66,16 @@ test('rejects an uploads directory that is itself a symbolic link', async () => 
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+
+test('requires each outer backup file exactly once', async () => {
+  const { validateBackupEntries } = await import('../src/ops/archive-safety.js');
+  assert.equal(validateBackupEntries(['database.dump', 'uploads.tar.gz', 'manifest.json']), true);
+  for (const entries of [
+    ['database.dump', 'uploads.tar.gz', 'uploads.tar.gz'],
+    ['database.dump', 'manifest.json'],
+    ['database.dump', 'uploads.tar.gz', 'manifest.json', 'extra.txt']
+  ]) {
+    assert.throws(() => validateBackupEntries(entries), /exactly once/);
+  }
+});

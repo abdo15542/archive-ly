@@ -11,7 +11,7 @@ export async function startOperation(operationType, metadata = {}) {
 export async function finishOperation(id, { status, artifactName = null, artifactSizeBytes = null, error = null, metadata = {} }) {
   if (!id) return;
   const safeError = error
-    ? String(error?.message || error).replace(/postgres(?:ql)?:\\/\\/[^\\s]+/gi, '[database connection redacted]').slice(0, 2000)
+    ? String(error?.message || error).replace(/postgres(?:ql)?:\/\/\S+/gi, '[database connection redacted]').slice(0, 2000)
     : null;
   await pool.query(
     `UPDATE backup_operations

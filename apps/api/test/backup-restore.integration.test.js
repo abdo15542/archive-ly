@@ -34,6 +34,11 @@ test('backup and restore recover PostgreSQL data and uploaded files end to end',
     await fs.writeFile(path.join(uploads, 'nested', 'record.txt'), 'archived upload');
     try {
       await client.connect();
+      await client.query(`CREATE TABLE backup_operations (
+        id BIGSERIAL PRIMARY KEY, operation_type varchar(20) NOT NULL, status varchar(20) NOT NULL,
+        started_at timestamptz NOT NULL DEFAULT NOW(), finished_at timestamptz, duration_ms bigint,
+        artifact_name text, artifact_size_bytes bigint, error_message text, metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+      )`);
       await client.query('CREATE TABLE backup_probe (id integer PRIMARY KEY, value text NOT NULL)');
       await client.query('INSERT INTO backup_probe VALUES (1, $1)', ['archived database row']);
       await client.end();
@@ -46,6 +51,7 @@ test('backup and restore recover PostgreSQL data and uploaded files end to end',
       const mutation = new Client({ connectionString });
       await mutation.connect();
       await mutation.query('DROP TABLE backup_probe');
+      await mutation.query("INSERT INTO backup_operations(operation_type,status,metadata) VALUES('backup','succeeded','{\"marker\":\"preserve-on-restore\"}'::jsonb)");
       await mutation.end();
       await fs.rm(uploads, { recursive: true, force: true });
 
@@ -63,6 +69,16 @@ test('backup and restore recover PostgreSQL data and uploaded files end to end',
         await restored.end();
       }
       assert.equal(await fs.readFile(path.join(uploads, 'nested', 'record.txt'), 'utf8'), 'archived upload');
+      const operationHistory = new Client({ connectionString });
+      await operationHistory.connect();
+      try {
+        const preserved = await operationHistory.query("SELECT COUNT(*)::int AS total FROM backup_operations WHERE metadata->>'marker'='preserve-on-restore'");
+        assert.equal(preserved.rows[0].total, 1, 'restore must preserve the operational history table');
+        const restoreLog = await operationHistory.query("SELECT status FROM backup_operations WHERE operation_type='restore' ORDER BY id DESC LIMIT 1");
+        assert.equal(restoreLog.rows[0]?.status, 'succeeded', 'restore operation should be marked successful');
+      } finally {
+        await operationHistory.end();
+      }
     } finally {
       await client.end().catch(() => {});
     }

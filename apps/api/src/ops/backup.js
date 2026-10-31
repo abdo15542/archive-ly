@@ -8,7 +8,6 @@ import { sha256File } from './file-hash.js';
 import { fileURLToPath } from 'node:url';
 import { assertSafeUploadTree } from './archive-safety.js';
 import { startOperation, finishOperation } from './operation-log.js';
-import fsSync from 'node:fs';
 import { pool } from '../db/pool.js';
 
 const run=promisify(execFile);
@@ -27,7 +26,7 @@ const work=await fs.mkdtemp(path.join(os.tmpdir(),'archive-ly-backup-'));
 try{
  operation=await startOperation('backup',{trigger:process.env.BACKUP_TRIGGER||'manual'});
  const dump=path.join(work,'database.dump');const uploads=path.join(work,'uploads.tar.gz');
- await run('pg_dump',['--format=custom','--no-owner','--no-acl','--file',dump,databaseUrl]);
+ await run('pg_dump',['--format=custom','--no-owner','--no-acl','--exclude-table=public.backup_operations','--file',dump,databaseUrl]);
  await fs.mkdir(uploadDir,{recursive:true});
  await assertSafeUploadTree(uploadDir);
  await run('tar',['-czf',uploads,'-C',uploadDir,'.']);

@@ -59,11 +59,12 @@ router.get('/audit-logs',async(req,res,next)=>{
   const page=Math.min(1000000,Math.max(1,Number.isSafeInteger(parsedPage)?parsedPage:1));
   const limit=Math.min(100,Math.max(1,Number.isSafeInteger(parsedLimit)?parsedLimit:50));
   const values=[];let where='WHERE 1=1';
-  if(req.query.action){values.push(String(req.query.action).trim().slice(0,80));where+=` AND a.action=${values.length}`;}
-  if(req.query.resourceType){values.push(String(req.query.resourceType).trim().slice(0,60));where+=` AND a.resource_type=${values.length}`;}
+  if(req.query.action){values.push(String(req.query.action).trim().slice(0,80));where+=` AND a.action=$${values.length}`;}
+  if(req.query.resourceType){values.push(String(req.query.resourceType).trim().slice(0,60));where+=` AND a.resource_type=$${values.length}`;}
   const count=await pool.query(`SELECT COUNT(*)::int AS total FROM audit_logs a ${where}`,values);
   values.push(limit,(page-1)*limit);
-  const r=await pool.query(`SELECT a.id,a.actor_id,u.full_name AS actor_name,a.action,a.resource_type,a.resource_id,a.ip_address,a.details,a.created_at FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_id ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT ${values.length-1} OFFSET ${values.length}`,values);
+  const limitParam=values.length-1,offsetParam=values.length;
+  const r=await pool.query(`SELECT a.id,a.actor_id,u.full_name AS actor_name,a.action,a.resource_type,a.resource_id,a.ip_address,a.details,a.created_at FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_id ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT $${limitParam} OFFSET $${offsetParam}`,values);
   const total=count.rows[0].total;
   res.json({logs:r.rows,pagination:{page,limit,total,totalPages:Math.ceil(total/limit)}});
  }catch(e){next(e);}
@@ -88,7 +89,7 @@ router.get('/ocr/queue',async(req,res,next)=>{
   if(status){values.push(status);where='WHERE j.status=$1';}
   values.push(limit,(page-1)*limit);
   const limitParam=values.length-1,offsetParam=values.length;
-  const jobs=await pool.query('SELECT j.id,j.document_id,d.title AS document_title,j.status,j.attempts,j.last_error,j.locked_at,j.created_at,j.updated_at FROM ocr_jobs j JOIN documents d ON d.id=j.document_id '+where+' ORDER BY CASE j.status WHEN \'failed\' THEN 0 WHEN \'processing\' THEN 1 WHEN \'queued\' THEN 2 ELSE 3 END,j.created_at ASC LIMIT $'+limitParam+' OFFSET $'+offsetParam,values);
+  const jobs=await pool.query('SELECT j.id,j.document_id,d.title AS document_title,j.status,j.attempts,j.last_error,j.locked_at,j.created_at,j.updated_at FROM ocr_jobs j JOIN documents d ON d.id=j.document_id '+where+' ORDER BY CASE j.status WHEN \'failed\' THEN 0 WHEN \'processing\' THEN 1 WHEN \'queued\' THEN 2 ELSE 3 END LIMIT $'+limitParam+' OFFSET $'+offsetParam,values);
   const countValues=status?[status]:[];
   const count=await pool.query(`SELECT COUNT(*)::int AS total FROM ocr_jobs j ${status?'WHERE j.status=$1':''}`,countValues);
   res.json({summary:summary.rows[0],jobs:jobs.rows,pagination:{page,limit,total:count.rows[0].total}});

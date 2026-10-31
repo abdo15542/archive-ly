@@ -11,6 +11,10 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 
 const router=Router();
 router.use(requireAuth);
+router.param('id',(req,res,next,id)=>{
+ if(!z.string().uuid().safeParse(id).success)return res.status(400).json({error:'معرّف الوثيقة غير صالح'});
+ next();
+});
 const here=path.dirname(fileURLToPath(import.meta.url));
 const uploadDir=path.resolve(process.env.UPLOAD_DIR || path.join(here,'../../uploads'));
 fs.mkdirSync(uploadDir,{recursive:true});

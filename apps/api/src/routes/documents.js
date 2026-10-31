@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { pool } from '../db/pool.js';
+import { validFile } from '../utils/file-validation.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 
 const router=Router();
@@ -17,14 +18,6 @@ const allowed=new Set(['application/pdf','image/jpeg','image/png','image/tiff'])
 const storage=multer.diskStorage({destination:(_req,_file,cb)=>cb(null,uploadDir),filename:(_req,_file,cb)=>cb(null,crypto.randomUUID())});
 const upload=multer({storage,limits:{fileSize:Number(process.env.MAX_FILE_SIZE_MB||30)*1024*1024,files:1},fileFilter:(_req,file,cb)=>allowed.has(file.mimetype)?cb(null,true):cb(Object.assign(new Error('نوع الملف غير مدعوم'),{status:415}))});
 
-function validFile(filePath,mime){
- const fd=fs.openSync(filePath,'r');const b=Buffer.alloc(12);const n=fs.readSync(fd,b,0,12,0);fs.closeSync(fd);
- if(mime==='application/pdf')return b.subarray(0,Math.min(n,5)).toString()==='%PDF-';
- if(mime==='image/png')return n>=8&&b.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
- if(mime==='image/jpeg')return n>=3&&b[0]===255&&b[1]===216&&b[2]===255;
- if(mime==='image/tiff')return b.subarray(0,4).toString('hex')==='49492a00'||b.subarray(0,4).toString('hex')==='4d4d002a';
- return false;
-}
 async function audit(actor,action,id,ip,details={}){
  await pool.query('INSERT INTO audit_logs(actor_id,action,resource_type,resource_id,ip_address,details) VALUES($1,$2,$3,$4,$5,$6)',[actor,action,'document',id,ip,JSON.stringify(details)]);
 }

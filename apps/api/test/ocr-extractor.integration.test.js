@@ -67,4 +67,19 @@ test('OCR uses real pdftotext extraction for a generated PDF fixture', {
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
+});\n
+test('Arabic OCR recognizes Arabic text rendered into a real image', {
+  skip: process.env.SKIP_OCR_BINARY_TESTS === '1'
+}, async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'archive-ocr-arabic-'));
+  try {
+    const svg = path.join(root, 'arabic.svg');
+    const png = path.join(root, 'arabic.png');
+    await fs.writeFile(svg, `<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="420"><rect width="100%" height="100%" fill="#fff"/><text x="900" y="275" text-anchor="middle" font-family="Noto Naskh Arabic" font-size="170" fill="#000">الأرشيف الليبي</text></svg>`, 'utf8');
+    await commandOutput('rsvg-convert', ['-o', png, svg], 60000);
+    const recognized = await ocrImage(png, commandOutput);
+    assert.match(recognized.replace(/\\s/g, ''), /الأرشيف/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
 });

@@ -30,7 +30,7 @@ jobs:
           node-version: 22
       - run: npm install
       - name: Install OCR system tools
-        run: sudo apt-get update && sudo apt-get install -y poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-ara
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-ara librsvg2-bin fonts-noto-core
       - run: npm run db:migrate
       - name: Verify migrations are idempotent
         run: npm run db:migrate

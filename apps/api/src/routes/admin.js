@@ -84,6 +84,8 @@ router.post('/ocr/jobs/:id/retry',async(req,res,next)=>{
   const current=await client.query('SELECT id,document_id,status FROM ocr_jobs WHERE id=$1 FOR UPDATE',[jobId]);
   if(!current.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'مهمة OCR غير موجودة'});}
   if(current.rows[0].status!=='failed'){await client.query('ROLLBACK');return res.status(409).json({error:'يمكن إعادة تشغيل المهام الفاشلة فقط'});}
+  const active=await client.query("SELECT id FROM ocr_jobs WHERE document_id=$1 AND id<>$2 AND status IN ('queued','processing') LIMIT 1",[current.rows[0].document_id,jobId]);
+  if(active.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'توجد مهمة OCR نشطة لهذه الوثيقة بالفعل'});}
   await client.query("UPDATE ocr_jobs SET status='queued',attempts=0,last_error=NULL,locked_at=NULL,updated_at=NOW() WHERE id=$1",[jobId]);
   await client.query("UPDATE documents SET ocr_status='pending',updated_at=NOW() WHERE id=$1",[current.rows[0].document_id]);
   await client.query("INSERT INTO audit_logs(actor_id,action,resource_type,resource_id,ip_address,details) VALUES($1,'ocr.job.requeued','ocr_job',$2,$3,$4)",[req.user.sub,String(jobId),req.ip,JSON.stringify({documentId:current.rows[0].document_id})]);

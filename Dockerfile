@@ -4,7 +4,7 @@ COPY package*.json ./
 COPY apps/api/package.json ./apps/api/package.json
 COPY apps/web/package.json ./apps/web/package.json
 RUN npm install --include=optional --no-audit --no-fund \
- && npm install --no-save --package-lock=false "@rollup/rollup-linux-x64-gnu@$(node -p \"require('./node_modules/rollup/package.json').version\")"
+ && npm install --no-save --package-lock=false "@rollup/rollup-linux-x64-gnu@$(node -p "require('./node_modules/rollup/package.json').version")"
 COPY apps/api ./apps/api
 COPY apps/web ./apps/web
 RUN npm run build:web

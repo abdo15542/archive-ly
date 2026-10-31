@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const run = promisify(execFile);
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 test('backup and restore recover PostgreSQL data and uploaded files end to end', {

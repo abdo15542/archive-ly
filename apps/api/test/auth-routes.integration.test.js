@@ -181,6 +181,14 @@ test('auth routes and document deletion preserve audit integrity', { skip: !proc
     assert.ok(auditPagePayload.pagination.total >= 1);
     assert.ok(auditPagePayload.pagination.totalPages >= 1);
 
+    const filteredAudit = await fetch(`${base}/admin/audit-logs?action=document.updated&resourceType=document&page=1&limit=5`, {
+      headers: { authorization: `Bearer ${loggedIn.token}` }
+    });
+    assert.equal(filteredAudit.status, 200);
+    const filteredAuditPayload = await filteredAudit.json();
+    assert.ok(filteredAuditPayload.logs.length >= 1);
+    assert.ok(filteredAuditPayload.logs.every(log => log.action === 'document.updated' && log.resource_type === 'document'));
+
     const deleted = await fetch(`${base}/documents/${documentId}`, {
       method: 'DELETE', headers: { authorization: `Bearer ${loggedIn.token}` }
     });

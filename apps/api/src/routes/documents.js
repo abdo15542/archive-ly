@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { pool } from '../db/pool.js';
 import { validFile } from '../utils/file-validation.js';
+import { resolveStoredFilePath, verifyFileSha256 } from '../utils/file-integrity.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 
 const router=Router();
@@ -108,11 +109,17 @@ router.post('/:id/ocr/retry',requireRole('admin','archivist'),async(req,res,next
 });
 router.get('/:id/file',async(req,res,next)=>{
  try{
-  const r=await pool.query('SELECT stored_name,original_name,mime_type FROM documents WHERE id=$1',[req.params.id]);
+  const r=await pool.query('SELECT stored_name,original_name,mime_type,sha256 FROM documents WHERE id=$1',[req.params.id]);
   if(!r.rowCount)return res.status(404).json({error:'الوثيقة غير موجودة'});
-  const filePath=path.join(uploadDir,r.rows[0].stored_name);if(!fs.existsSync(filePath))return res.status(404).json({error:'ملف الوثيقة غير متاح'});
+  const filePath=resolveStoredFilePath(uploadDir,r.rows[0].stored_name);
+  if(!fs.existsSync(filePath))return res.status(404).json({error:'ملف الوثيقة غير متاح'});
+  const intact=await verifyFileSha256(filePath,r.rows[0].sha256);
+  if(!intact){
+   console.error('Document integrity check failed:',{documentId:req.params.id});
+   return res.status(500).json({error:'تعذر تقديم الملف لأن فحص سلامته لم ينجح'});
+  }
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Type',r.rows[0].mime_type);res.setHeader('Content-Disposition',`inline; filename*=UTF-8''${encodeURIComponent(r.rows[0].original_name)}`);
-  fs.createReadStream(filePath).pipe(res);
+  fs.createReadStream(filePath).on('error',next).pipe(res);
  }catch(e){next(e);}
 });
 router.delete('/:id',requireRole('admin','archivist'),async(req,res,next)=>{
@@ -130,7 +137,7 @@ router.delete('/:id',requireRole('admin','archivist'),async(req,res,next)=>{
   try{await client.query('ROLLBACK');}catch{}
   return next(e);
  }finally{client.release();}
- const filePath=path.join(uploadDir,storedName);
+ const filePath=resolveStoredFilePath(uploadDir,storedName);
  try{fs.unlinkSync(filePath);}catch(error){
   if(error.code!=='ENOENT')console.error('Could not remove archived document file:',{documentId:req.params.id,error});
  }

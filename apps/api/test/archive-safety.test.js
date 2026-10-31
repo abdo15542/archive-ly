@@ -32,3 +32,37 @@ test('rejects empty archive listings', () => {
   assert.throws(() => validateArchivePaths([]), /empty or invalid/);
   assert.throws(() => validateArchiveTypes([]), /empty or invalid/);
 });
+
+test('rejects symbolic links nested inside upload folders', async () => {
+  const fs = await import('node:fs/promises');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { assertSafeUploadTree } = await import('../src/ops/archive-safety.js');
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'archive-tree-'));
+  try {
+    await fs.mkdir(path.join(root, 'nested'));
+    await fs.writeFile(path.join(root, 'nested', 'safe.txt'), 'safe');
+    assert.equal(await assertSafeUploadTree(root), true);
+    await fs.symlink(path.join(root, 'nested', 'safe.txt'), path.join(root, 'nested', 'linked.txt'));
+    await assert.rejects(assertSafeUploadTree(root), /symbolic link/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects an uploads directory that is itself a symbolic link', async () => {
+  const fs = await import('node:fs/promises');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { assertSafeUploadTree } = await import('../src/ops/archive-safety.js');
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'archive-root-link-'));
+  try {
+    const real = path.join(root, 'real');
+    const link = path.join(root, 'link');
+    await fs.mkdir(real);
+    await fs.symlink(real, link);
+    await assert.rejects(assertSafeUploadTree(link), /real directory/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

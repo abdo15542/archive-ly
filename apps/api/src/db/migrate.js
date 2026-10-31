@@ -62,6 +62,23 @@ CREATE TABLE IF NOT EXISTS ocr_jobs (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS ocr_jobs_queue_idx ON ocr_jobs(status, created_at);
+-- Keep one active OCR job per document, including under concurrent requests.
+WITH ranked_active_jobs AS (
+  SELECT id, ROW_NUMBER() OVER (PARTITION BY document_id ORDER BY created_at, id) AS position
+  FROM ocr_jobs
+  WHERE status IN ('queued','processing')
+)
+UPDATE ocr_jobs AS jobs
+SET status='failed',
+    last_error=COALESCE(jobs.last_error,'تم إيقاف مهمة OCR مكررة أثناء ترقية قيود الطابور'),
+    locked_at=NULL,
+    updated_at=NOW()
+FROM ranked_active_jobs AS ranked
+WHERE jobs.id=ranked.id AND ranked.position>1;
+CREATE UNIQUE INDEX IF NOT EXISTS ocr_jobs_one_active_per_document_idx
+  ON ocr_jobs(document_id)
+  WHERE status IN ('queued','processing');
+
 CREATE INDEX IF NOT EXISTS audit_logs_created_idx ON audit_logs(created_at DESC);
 `;
 

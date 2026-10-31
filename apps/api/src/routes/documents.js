@@ -69,12 +69,18 @@ router.patch('/:id',requireRole('admin','archivist'),async(req,res,next)=>{
  try{
   const p=z.object({title:z.string().trim().min(2).max(250).optional(),documentNumber:z.string().max(100).nullable().optional(),subject:z.string().max(5000).nullable().optional(),issuingEntity:z.string().max(200).nullable().optional(),documentDate:z.string().date().nullable().optional(),categoryId:z.string().uuid().nullable().optional()}).strict().safeParse(req.body);
   if(!p.success||!Object.keys(p.data||{}).length)return res.status(400).json({error:'بيانات التعديل غير صحيحة'});
-  const d=p.data;
-  const r=await pool.query(`UPDATE documents SET title=COALESCE($2,title),document_number=CASE WHEN $3 THEN $4 ELSE document_number END,subject=CASE WHEN $5 THEN $6 ELSE subject END,issuing_entity=CASE WHEN $7 THEN $8 ELSE issuing_entity END,document_date=CASE WHEN $9 THEN $10::date ELSE document_date END,category_id=CASE WHEN $11 THEN $12::uuid ELSE category_id END,updated_at=NOW() WHERE id=$1 RETURNING id,title,document_number,subject,issuing_entity,document_date,category_id,ocr_status,updated_at`,
-  [req.params.id,d.title??null,'documentNumber'in d,d.documentNumber??null,'subject'in d,d.subject??null,'issuingEntity'in d,d.issuingEntity??null,'documentDate'in d,d.documentDate??null,'categoryId'in d,d.categoryId??null]);
-  if(!r.rowCount)return res.status(404).json({error:'الوثيقة غير موجودة'});
-  await audit(req.user.sub,'document.updated',req.params.id,req.ip);
-  res.json({document:r.rows[0]});
+  const d=p.data,client=await pool.connect();
+  let updated;
+  try{
+   await client.query('BEGIN');
+   const r=await client.query(`UPDATE documents SET title=COALESCE($2,title),document_number=CASE WHEN $3 THEN $4 ELSE document_number END,subject=CASE WHEN $5 THEN $6 ELSE subject END,issuing_entity=CASE WHEN $7 THEN $8 ELSE issuing_entity END,document_date=CASE WHEN $9 THEN $10::date ELSE document_date END,category_id=CASE WHEN $11 THEN $12::uuid ELSE category_id END,updated_at=NOW() WHERE id=$1 RETURNING id,title,document_number,subject,issuing_entity,document_date,category_id,ocr_status,updated_at`,
+   [req.params.id,d.title??null,'documentNumber'in d,d.documentNumber??null,'subject'in d,d.subject??null,'issuingEntity'in d,d.issuingEntity??null,'documentDate'in d,d.documentDate??null,'categoryId'in d,d.categoryId??null]);
+   if(!r.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'الوثيقة غير موجودة'});}
+   updated=r.rows[0];
+   await client.query('INSERT INTO audit_logs(actor_id,action,resource_type,resource_id,ip_address) VALUES($1,$2,$3,$4,$5)',[req.user.sub,'document.updated','document',req.params.id,req.ip]);
+   await client.query('COMMIT');
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+  res.json({document:updated});
  }catch(e){next(e);}
 });
 router.post('/:id/ocr/retry',requireRole('admin','archivist'),async(req,res,next)=>{

@@ -35,6 +35,8 @@ jobs:
       - name: Verify migrations are idempotent
         run: npm run db:migrate
       - run: npm test
+      - run: node --check apps/api/src/server.js
+      - run: node --check apps/api/src/db/pool.js
       - run: node --check apps/api/src/routes/admin.js
       - run: node --check apps/api/src/routes/documents.js
       - run: node --check apps/api/src/db/migrate.js
@@ -49,3 +51,5 @@ jobs:
       - run: node --check apps/api/src/ops/retention.js
       - run: node --check apps/api/src/ops/scheduler.js
       - run: npm run build:web
+      - name: Build production Docker image
+        run: docker build -t archive-ly:ci .

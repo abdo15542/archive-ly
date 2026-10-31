@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { pool } from '../db/pool.js';
 import { extractDocument } from './ocr-extractor.js';
+import { failExhaustedOcrLeases } from './ocr-queue.js';
 
 let stopping = false;
 process.on('SIGTERM', () => { stopping = true; });
@@ -10,9 +11,11 @@ async function claim() {
  const client = await pool.connect();
  try {
   await client.query('BEGIN');
+  await failExhaustedOcrLeases(client);
   const r = await client.query(`SELECT j.id,j.document_id,d.stored_name,d.mime_type
    FROM ocr_jobs j JOIN documents d ON d.id=j.document_id
-   WHERE j.status='queued' OR (j.status='processing' AND j.locked_at<NOW()-INTERVAL '15 minutes')
+   WHERE (j.status='queued' AND j.attempts < 3)
+      OR (j.status='processing' AND j.attempts < 3 AND j.locked_at<NOW()-INTERVAL '15 minutes')
    ORDER BY j.created_at FOR UPDATE OF j SKIP LOCKED LIMIT 1`);
   if (!r.rowCount) { await client.query('COMMIT'); return null; }
   const job = r.rows[0];

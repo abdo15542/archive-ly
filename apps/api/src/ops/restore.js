@@ -23,9 +23,9 @@ const work=await fs.mkdtemp(path.join(os.tmpdir(),'archive-ly-restore-'));
 let stageRoot='';
 try{
  const archivePath=path.resolve(archive);
- const outerListing=(await run('tar',['-tzf',archivePath])).stdout.split('\\n').filter(Boolean);
+ const outerListing=(await run('tar',['-tzf',archivePath])).stdout.split(/\r?\n/).filter(Boolean);
  validateBackupEntries(outerListing);
- const outerTypes=(await run('tar',['-tvzf',archivePath])).stdout.split('\\n').filter(Boolean);
+ const outerTypes=(await run('tar',['-tvzf',archivePath])).stdout.split(/\r?\n/).filter(Boolean);
  validateArchiveTypes(outerTypes);
  await run('tar',['-xzf',archivePath,'-C',work]);
  const manifest=JSON.parse(await fs.readFile(path.join(work,'manifest.json'),'utf8'));
@@ -40,9 +40,9 @@ try{
  const stagedUploads=path.join(stageRoot,'uploads');
  await fs.mkdir(stagedUploads);
  const uploadsArchive=path.join(work,'uploads.tar.gz');
- const uploadEntries=(await run('tar',['-tzf',uploadsArchive])).stdout.split('\\n').filter(Boolean);
+ const uploadEntries=(await run('tar',['-tzf',uploadsArchive])).stdout.split(/\r?\n/).filter(Boolean);
  validateArchivePaths(uploadEntries);
- const verbose=(await run('tar',['-tvzf',uploadsArchive])).stdout.split('\\n').filter(Boolean);
+ const verbose=(await run('tar',['-tvzf',uploadsArchive])).stdout.split(/\r?\n/).filter(Boolean);
  validateArchiveTypes(verbose);
  await run('tar',['-xzf',uploadsArchive,'-C',stagedUploads]);
  console.log('Checksums verified. Switching uploads safely and restoring database...');

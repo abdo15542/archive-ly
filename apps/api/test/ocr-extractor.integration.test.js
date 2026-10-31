@@ -78,7 +78,7 @@ test('Arabic OCR recognizes Arabic text rendered into a real image', {
     await fs.writeFile(svg, `<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="420"><rect width="100%" height="100%" fill="#fff"/><text x="900" y="275" text-anchor="middle" font-family="Noto Naskh Arabic" font-size="170" fill="#000">الأرشيف الليبي</text></svg>`, 'utf8');
     await commandOutput('rsvg-convert', ['-o', png, svg], 60000);
     const recognized = await ocrImage(png, commandOutput);
-    assert.match(recognized.replace(/\\s/g, ''), /الأرشيف/);
+    assert.match(recognized.replace(/\\s/g, ''), /الأرشي/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

@@ -30,6 +30,8 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run db:migrate
+      - name: Verify migrations are idempotent
+        run: npm run db:migrate
       - run: npm test
       - run: node --check apps/api/src/routes/admin.js
       - run: node --check apps/api/src/routes/documents.js

@@ -69,7 +69,6 @@ test('PostgreSQL prevents more than one active OCR job per document', {
   } finally {
     await client.query('ROLLBACK');
     client.release();
-    await pool.end();
   }
 });
 

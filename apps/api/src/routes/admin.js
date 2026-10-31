@@ -54,13 +54,18 @@ router.patch('/users/:id',async(req,res,next)=>{
 });
 router.get('/audit-logs',async(req,res,next)=>{
  try{
-  const limit=Math.min(200,Math.max(1,Number.parseInt(req.query.limit||'50',10)||50));
+  const parsedPage=Number.parseInt(req.query.page||'1',10);
+  const parsedLimit=Number.parseInt(req.query.limit||'50',10);
+  const page=Math.min(1000000,Math.max(1,Number.isSafeInteger(parsedPage)?parsedPage:1));
+  const limit=Math.min(100,Math.max(1,Number.isSafeInteger(parsedLimit)?parsedLimit:50));
   const values=[];let where='WHERE 1=1';
-  if(req.query.action){values.push(String(req.query.action).slice(0,80));where+=` AND a.action=$${values.length}`;}
-  if(req.query.resourceType){values.push(String(req.query.resourceType).slice(0,60));where+=` AND a.resource_type=$${values.length}`;}
-  values.push(limit);
-  const r=await pool.query(`SELECT a.id,a.actor_id,u.full_name AS actor_name,a.action,a.resource_type,a.resource_id,a.ip_address,a.details,a.created_at FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_id ${where} ORDER BY a.created_at DESC LIMIT $${values.length}`,values);
-  res.json({logs:r.rows});
+  if(req.query.action){values.push(String(req.query.action).trim().slice(0,80));where+=` AND a.action=${values.length}`;}
+  if(req.query.resourceType){values.push(String(req.query.resourceType).trim().slice(0,60));where+=` AND a.resource_type=${values.length}`;}
+  const count=await pool.query(`SELECT COUNT(*)::int AS total FROM audit_logs a ${where}`,values);
+  values.push(limit,(page-1)*limit);
+  const r=await pool.query(`SELECT a.id,a.actor_id,u.full_name AS actor_name,a.action,a.resource_type,a.resource_id,a.ip_address,a.details,a.created_at FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_id ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT ${values.length-1} OFFSET ${values.length}`,values);
+  const total=count.rows[0].total;
+  res.json({logs:r.rows,pagination:{page,limit,total,totalPages:Math.ceil(total/limit)}});
  }catch(e){next(e);}
 });
 

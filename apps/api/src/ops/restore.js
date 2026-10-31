@@ -4,7 +4,7 @@ import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import crypto from 'node:crypto';
+import { sha256File } from './file-hash.js';
 import { validateArchivePaths, validateArchiveTypes, validateBackupEntries } from './archive-safety.js';
 import { fileURLToPath } from 'node:url';
 
@@ -13,7 +13,6 @@ const here=path.dirname(fileURLToPath(import.meta.url));
 const uploadDir=path.resolve(process.env.UPLOAD_DIR||path.resolve(here,'../../uploads'));
 const databaseUrl=process.env.DATABASE_URL;
 const archive=process.argv[2];
-const digest=async file=>crypto.createHash('sha256').update(await fs.readFile(file)).digest('hex');
 
 if(!databaseUrl||!archive){
  console.error('Usage: npm run restore -- /absolute/path/to/backup.tar.gz (DATABASE_URL is required)');
@@ -31,7 +30,7 @@ try{
  const manifest=JSON.parse(await fs.readFile(path.join(work,'manifest.json'),'utf8'));
  if(manifest.format!=='archive-ly-backup-v1'||!manifest.files?.['database.dump']||!manifest.files?.['uploads.tar.gz'])throw new Error('Unsupported or incomplete backup manifest');
  for(const name of ['database.dump','uploads.tar.gz']){
-  if(await digest(path.join(work,name))!==manifest.files[name])throw new Error('SHA-256 verification failed for '+name);
+  if(await sha256File(path.join(work,name))!==manifest.files[name])throw new Error('SHA-256 verification failed for '+name);
  }
  const stagedUploads=path.join(work,'restored-uploads');
  await fs.mkdir(stagedUploads);

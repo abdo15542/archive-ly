@@ -4,7 +4,7 @@ import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import crypto from 'node:crypto';
+import { sha256File } from './file-hash.js';
 import { fileURLToPath } from 'node:url';
 import { assertSafeUploadTree } from './archive-safety.js';
 
@@ -13,7 +13,6 @@ const here=path.dirname(fileURLToPath(import.meta.url));
 const uploadDir=path.resolve(process.env.UPLOAD_DIR||path.resolve(here,'../../uploads'));
 const backupDir=path.resolve(process.env.BACKUP_DIR||path.resolve(here,'../../../../backups'));
 const databaseUrl=process.env.DATABASE_URL;
-const digest=async file=>crypto.createHash('sha256').update(await fs.readFile(file)).digest('hex');
 const stamp=new Date().toISOString().replace(/[:.]/g,'-');
 let temporaryOutput='';
 
@@ -26,7 +25,7 @@ try{
  await fs.mkdir(uploadDir,{recursive:true});
  await assertSafeUploadTree(uploadDir);
  await run('tar',['-czf',uploads,'-C',uploadDir,'.']);
- const manifest={format:'archive-ly-backup-v1',createdAt:new Date().toISOString(),files:{'database.dump':await digest(dump),'uploads.tar.gz':await digest(uploads)}};
+ const manifest={format:'archive-ly-backup-v1',createdAt:new Date().toISOString(),files:{'database.dump':await sha256File(dump),'uploads.tar.gz':await sha256File(uploads)}};
  await fs.writeFile(path.join(work,'manifest.json'),JSON.stringify(manifest,null,2)+'\n',{mode:0o600});
  const output=path.join(backupDir,'archive-ly-backup-'+stamp+'-'+process.pid+'.tar.gz');
  temporaryOutput=output+'.partial';
@@ -35,7 +34,7 @@ try{
  // Publish only a complete archive: rename is atomic because the temporary file is on the same filesystem.
  await fs.rename(temporaryOutput,output);
  temporaryOutput='';
- console.log(JSON.stringify({status:'created',file:output,sha256:await digest(output),manifest},null,2));
+ console.log(JSON.stringify({status:'created',file:output,sha256:await sha256File(output),manifest},null,2));
 }catch(error){console.error('Backup failed:',error.stderr||error.message);process.exitCode=1;}
 finally{
  if(temporaryOutput)await fs.rm(temporaryOutput,{force:true});

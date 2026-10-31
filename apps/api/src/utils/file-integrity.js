@@ -18,6 +18,8 @@ export async function verifyFileSha256(filePath, expectedSha256) {
   if (typeof expectedSha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(expectedSha256)) {
     throw new Error('Stored document checksum is invalid');
   }
+  const stat = await fs.promises.lstat(filePath);
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Stored document is not a regular file');
   const hash = crypto.createHash('sha256');
   for await (const chunk of fs.createReadStream(filePath)) hash.update(chunk);
   const actual = Buffer.from(hash.digest('hex'), 'hex');

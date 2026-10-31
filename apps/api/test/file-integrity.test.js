@@ -34,3 +34,17 @@ test('streaming SHA-256 verification accepts intact files and rejects modified f
 test('checksum verification rejects malformed stored hashes', async () => {
   await assert.rejects(verifyFileSha256('/not-read-because-hash-is-invalid', 'invalid'), /checksum is invalid/);
 });
+
+test('checksum verification refuses symbolic links', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'archive-ly-symlink-'));
+  const target = path.join(directory, 'target.bin');
+  const link = path.join(directory, 'link.bin');
+  try {
+    await fs.writeFile(target, 'outside target');
+    await fs.symlink(target, link);
+    const digest = crypto.createHash('sha256').update('outside target').digest('hex');
+    await assert.rejects(verifyFileSha256(link, digest), /not a regular file/);
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});

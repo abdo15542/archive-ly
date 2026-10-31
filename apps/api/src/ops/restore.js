@@ -5,7 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { validateArchivePaths, validateArchiveTypes } from './archive-safety.js';
+import { validateArchivePaths, validateArchiveTypes, validateBackupEntries } from './archive-safety.js';
 import { fileURLToPath } from 'node:url';
 
 const run=promisify(execFile);
@@ -23,9 +23,10 @@ const work=await fs.mkdtemp(path.join(os.tmpdir(),'archive-ly-restore-'));
 let oldUploads='';
 try{
  const archivePath=path.resolve(archive);
- const outerListing=(await run('tar',['-tzf',archivePath])).stdout.trim().split('\n').filter(Boolean);
- const allowedOuter=new Set(['database.dump','uploads.tar.gz','manifest.json']);
- if(outerListing.length!==3||outerListing.some(name=>!allowedOuter.has(name)))throw new Error('Backup archive contains unexpected paths');
+ const outerListing=(await run('tar',['-tzf',archivePath])).stdout.split('\n').filter(Boolean);
+ validateBackupEntries(outerListing);
+ const outerTypes=(await run('tar',['-tvzf',archivePath])).stdout.split('\n').filter(Boolean);
+ validateArchiveTypes(outerTypes);
  await run('tar',['-xzf',archivePath,'-C',work]);
  const manifest=JSON.parse(await fs.readFile(path.join(work,'manifest.json'),'utf8'));
  if(manifest.format!=='archive-ly-backup-v1'||!manifest.files?.['database.dump']||!manifest.files?.['uploads.tar.gz'])throw new Error('Unsupported or incomplete backup manifest');

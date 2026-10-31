@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { getPdfPageLimit, extractDocument } from '../src/workers/ocr-extractor.js';
+import { getPdfPageLimit, extractDocument, commandOutput, ocrImage } from '../src/workers/ocr-extractor.js';
 
 test('OCR page limit defaults safely and rejects invalid or excessive values', () => {
   assert.equal(getPdfPageLimit(undefined), 15);
@@ -59,6 +59,11 @@ test('OCR uses real pdftotext extraction for a generated PDF fixture', {
       { uploadDir: root }
     );
     assert.match(result, /Archive LY integration fixture/);
+    const renderedPrefix = path.join(root, 'rendered');
+    await commandOutput('pdftoppm', ['-f', '1', '-l', '1', '-r', '200', '-png', path.join(root, 'fixture.pdf'), renderedPrefix]);
+    const rendered = path.join(root, 'rendered-1.png');
+    const recognized = await ocrImage(rendered, commandOutput);
+    assert.match(recognized.toLowerCase(), /archive/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

@@ -65,6 +65,18 @@ test('auth routes and document deletion preserve audit integrity', { skip: !proc
     const loggedIn = await login.json();
     assert.ok(loggedIn.token);
 
+    const invalidCategoryFilter = await fetch(`${base}/documents?category=not-a-uuid`, {
+      headers: { authorization: `Bearer ${loggedIn.token}` }
+    });
+    assert.equal(invalidCategoryFilter.status, 400);
+    const boundedList = await fetch(`${base}/documents?page=-5&limit=1000`, {
+      headers: { authorization: `Bearer ${loggedIn.token}` }
+    });
+    assert.equal(boundedList.status, 200);
+    const boundedPayload = await boundedList.json();
+    assert.equal(boundedPayload.pagination.page, 1);
+    assert.equal(boundedPayload.pagination.limit, 100);
+
     // Role boundaries: viewers are read-only; archivists can manage records but cannot delete categories.
     const viewerToken = jwt.sign({ sub: registered.user.id, role: 'viewer' }, process.env.JWT_SECRET);
     const archivistToken = jwt.sign({ sub: registered.user.id, role: 'archivist' }, process.env.JWT_SECRET);

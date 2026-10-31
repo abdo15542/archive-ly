@@ -5,9 +5,7 @@ services:
     environment:
       POSTGRES_DB: archive_ly
       POSTGRES_USER: archive
-      POSTGRES_PASSWORD: archive_dev_password
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - archive_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -21,13 +19,15 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4000
-      DATABASE_URL: postgresql://archive:archive_dev_password@db:5432/archive_ly
-      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in your environment}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      DATABASE_URL: "postgresql://archive:${POSTGRES_PASSWORD}@db:5432/archive_ly"
+      DATABASE_SSL: "false"
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGIN: ${CORS_ORIGIN}
       UPLOAD_DIR: /app/uploads
+      MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-30}
     command: ["sh","-c","npm --workspace apps/api run db:migrate && npm --workspace apps/api start"]
     ports:
-      - "4000:4000"
+      - "${PORT:-4000}:4000"
     volumes:
       - archive_uploads:/app/uploads
     depends_on:
@@ -39,16 +39,16 @@ services:
     command: ["npm","--workspace","apps/api","run","worker:ocr"]
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://archive:archive_dev_password@db:5432/archive_ly
+      DATABASE_URL: "postgresql://archive:${POSTGRES_PASSWORD}@db:5432/archive_ly"
+      DATABASE_SSL: "false"
       UPLOAD_DIR: /app/uploads
       TESSERACT_LANG: ara+eng
-      OCR_MAX_PDF_PAGES: 15
+      OCR_MAX_PDF_PAGES: ${OCR_MAX_PDF_PAGES:-15}
     volumes:
       - archive_uploads:/app/uploads
     depends_on:
-      db:
-        condition: service_healthy
-
+      api:
+        condition: service_started
   backup:
     profiles: ["tools"]
     build: .
@@ -56,16 +56,16 @@ services:
     command: ["npm","--workspace","apps/api","run","backup"]
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://archive:archive_dev_password@db:5432/archive_ly
+      DATABASE_URL: "postgresql://archive:${POSTGRES_PASSWORD}@db:5432/archive_ly"
+      DATABASE_SSL: "false"
       UPLOAD_DIR: /app/uploads
       BACKUP_DIR: /backups
     volumes:
       - archive_uploads:/app/uploads
       - archive_backups:/backups
     depends_on:
-      db:
-        condition: service_healthy
-
+      api:
+        condition: service_started
   backup-scheduler:
     profiles: ["tools"]
     build: .
@@ -73,7 +73,8 @@ services:
     command: ["npm","--workspace","apps/api","run","backup:scheduler"]
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://archive:archive_dev_password@db:5432/archive_ly
+      DATABASE_URL: "postgresql://archive:${POSTGRES_PASSWORD}@db:5432/archive_ly"
+      DATABASE_SSL: "false"
       UPLOAD_DIR: /app/uploads
       BACKUP_DIR: /backups
       BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
@@ -82,9 +83,8 @@ services:
       - archive_uploads:/app/uploads
       - archive_backups:/backups
     depends_on:
-      db:
-        condition: service_healthy
-
+      api:
+        condition: service_started
 volumes:
   archive_pgdata:
   archive_uploads:

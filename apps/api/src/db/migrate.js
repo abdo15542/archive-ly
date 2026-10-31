@@ -80,6 +80,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS ocr_jobs_one_active_per_document_idx
   WHERE status IN ('queued','processing');
 
 CREATE INDEX IF NOT EXISTS audit_logs_created_idx ON audit_logs(created_at DESC);
+CREATE TABLE IF NOT EXISTS ocr_workers (
+  id UUID PRIMARY KEY,
+  worker_name VARCHAR(160) NOT NULL,
+  pid INTEGER NOT NULL,
+  status VARCHAR(20) NOT NULL CHECK (status IN ('online','stopped')),
+  started_at TIMESTAMPTZ NOT NULL,
+  last_seen_at TIMESTAMPTZ NOT NULL,
+  stopped_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS ocr_workers_last_seen_idx ON ocr_workers(last_seen_at DESC);
 `;
 
 try {

@@ -96,6 +96,15 @@ router.get('/ocr/queue',async(req,res,next)=>{
  }catch(e){next(e);}
 });
 
+router.get('/ocr/workers',async(_req,res,next)=>{
+ try{
+  const result=await pool.query(
+   'SELECT id,worker_name,pid,status,started_at,last_seen_at,stopped_at FROM ocr_workers ORDER BY last_seen_at DESC LIMIT 50'
+  );
+  res.json({workers:result.rows});
+ }catch(e){next(e);}
+});
+
 router.post('/ocr/jobs/:id/retry',async(req,res,next)=>{
  const jobId=Number(req.params.id);
  if(!Number.isSafeInteger(jobId)||jobId<1)return res.status(400).json({error:'رقم مهمة OCR غير صالح'});

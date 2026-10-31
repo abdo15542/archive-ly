@@ -39,6 +39,7 @@ jobs:
       - run: node --check apps/api/src/routes/documents.js
       - run: node --check apps/api/src/db/migrate.js
       - run: node --check apps/api/src/workers/ocr.js
+      - run: node --check apps/api/src/workers/ocr-runner.js
       - run: node --check apps/api/src/ops/backup.js
       - run: node --check apps/api/src/ops/restore.js
       - run: node --check apps/api/src/ops/retention.js

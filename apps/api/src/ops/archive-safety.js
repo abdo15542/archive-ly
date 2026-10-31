@@ -43,3 +43,15 @@ export async function assertSafeUploadTree(directory) {
   await visit(directory);
   return true;
 }
+
+
+// The outer backup must contain exactly the three expected regular files once each.
+export function validateBackupEntries(entries) {
+  const allowed = ['database.dump', 'uploads.tar.gz', 'manifest.json'];
+  if (!Array.isArray(entries) || entries.length !== allowed.length ||
+      new Set(entries).size !== allowed.length ||
+      allowed.some(name => !entries.includes(name))) {
+    throw new Error('Backup archive must contain each required file exactly once');
+  }
+  return true;
+}

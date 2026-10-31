@@ -72,3 +72,37 @@ test('PostgreSQL prevents more than one active OCR job per document', {
     await pool.end();
   }
 });
+
+test('abandoned OCR leases at the retry limit are failed instead of reclaimed forever', {
+  skip: !process.env.DATABASE_URL
+}, async () => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const document = await client.query(
+      `INSERT INTO documents(title,original_name,stored_name,mime_type,file_size,sha256,ocr_status)
+       VALUES($1,$2,$3,'application/pdf',1,$4,'processing') RETURNING id`,
+      ['اختبار استنفاد OCR', 'exhausted.pdf', crypto.randomUUID(), 'c'.repeat(64)]
+    );
+    const job = await client.query(
+      `INSERT INTO ocr_jobs(document_id,status,attempts,locked_at)
+       VALUES($1,'processing',3,NOW()-INTERVAL '16 minutes') RETURNING id`,
+      [document.rows[0].id]
+    );
+    const { failExhaustedOcrLeases } = await import('../src/workers/ocr-queue.js');
+    assert.equal(await failExhaustedOcrLeases(client), 1);
+    const state = await client.query(
+      `SELECT j.status,j.locked_at,d.ocr_status,j.last_error
+       FROM ocr_jobs j JOIN documents d ON d.id=j.document_id WHERE j.id=$1`,
+      [job.rows[0].id]
+    );
+    assert.equal(state.rows[0].status, 'failed');
+    assert.equal(state.rows[0].locked_at, null);
+    assert.equal(state.rows[0].ocr_status, 'failed');
+    assert.match(state.rows[0].last_error, /استنفاد محاولات OCR/);
+  } finally {
+    await client.query('ROLLBACK');
+    client.release();
+    await pool.end();
+  }
+});

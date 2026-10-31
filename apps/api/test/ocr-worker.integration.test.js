@@ -32,7 +32,7 @@ test('OCR worker claims a queued job and atomically persists extracted text and 
       },
       logger: { info() {}, error() {} }
     });
-    const result = await worker.runOnce();
+    const result = await worker.runOnce({ documentId });
     assert.equal(result.status, 'completed');
     assert.match(result.text, /نص عربي مفهرس/);
 

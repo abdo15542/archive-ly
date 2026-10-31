@@ -5,7 +5,7 @@ export function createOcrWorker({ pool, extractDocument, logger = console, maxAt
     throw new TypeError('OCR worker requires a PostgreSQL pool and extractDocument function');
   }
 
-  async function claim() {
+  async function claim(documentId = null) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -17,10 +17,11 @@ export function createOcrWorker({ pool, extractDocument, logger = console, maxAt
         WHERE (j.status='queued' AND j.attempts < $1)
            OR (j.status='processing' AND j.attempts < $1
                AND j.locked_at < NOW() - ($2::int * INTERVAL '1 minute'))
+          AND ($3::uuid IS NULL OR j.document_id=$3)
         ORDER BY j.created_at,j.id
         FOR UPDATE OF j SKIP LOCKED
         LIMIT 1
-      `, [maxAttempts, leaseMinutes]);
+      `, [maxAttempts, leaseMinutes, documentId]);
       if (!result.rowCount) {
         await client.query('COMMIT');
         return null;
@@ -119,8 +120,8 @@ export function createOcrWorker({ pool, extractDocument, logger = console, maxAt
     }
   }
 
-  async function runOnce() {
-    const job = await claim();
+  async function runOnce({ documentId } = {}) {
+    const job = await claim(documentId || null);
     if (!job) return { status: 'idle' };
     return processJob(job);
   }

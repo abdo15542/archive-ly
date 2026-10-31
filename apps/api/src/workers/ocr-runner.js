@@ -14,9 +14,9 @@ export function createOcrWorker({ pool, extractDocument, logger = console, maxAt
         SELECT j.id,j.document_id,d.stored_name,d.mime_type
         FROM ocr_jobs j
         JOIN documents d ON d.id=j.document_id
-        WHERE (j.status='queued' AND j.attempts < $1)
-           OR (j.status='processing' AND j.attempts < $1
-               AND j.locked_at < NOW() - ($2::int * INTERVAL '1 minute'))
+        WHERE ((j.status='queued' AND j.attempts < $1)
+            OR (j.status='processing' AND j.attempts < $1
+                AND j.locked_at < NOW() - ($2::int * INTERVAL '1 minute')))
           AND ($3::uuid IS NULL OR j.document_id=$3)
         ORDER BY j.created_at,j.id
         FOR UPDATE OF j SKIP LOCKED

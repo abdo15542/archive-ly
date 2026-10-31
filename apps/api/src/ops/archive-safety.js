@@ -2,9 +2,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 const isSafeArchivePath = entry => {
-  if (typeof entry !== 'string' || entry.length === 0 || entry.includes('\\0')) return false;
-  if (entry.startsWith('/') || /^[A-Za-z]:[\\\\/]/.test(entry)) return false;
-  const normalized = entry.replace(/\\\\/g, '/').replace(/^\\.\\//, '');
+  if (typeof entry !== 'string' || entry.length === 0 || entry.includes('\0')) return false;
+  const portable = entry.replaceAll(String.fromCharCode(92), '/');
+  if (portable.startsWith('/') || /^[A-Za-z]:\//.test(portable)) return false;
+  const normalized = portable.replace(/^\.\//, '');
   if (normalized === '' || normalized === '.') return true;
   return !normalized.split('/').some(segment => segment === '..');
 };

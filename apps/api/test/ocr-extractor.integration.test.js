@@ -67,7 +67,7 @@ test('OCR uses real pdftotext extraction for a generated PDF fixture', {
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
-});\n
+});
 test('Arabic OCR recognizes Arabic text rendered into a real image', {
   skip: process.env.SKIP_OCR_BINARY_TESTS === '1'
 }, async () => {

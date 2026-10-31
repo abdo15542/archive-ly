@@ -26,8 +26,9 @@ router.get('/',async(req,res,next)=>{
  try{
   const page=Math.max(1,Number.parseInt(req.query.page||'1',10)||1),limit=Math.min(100,Math.max(1,Number.parseInt(req.query.limit||'20',10)||20));
   const q=String(req.query.q||'').trim().slice(0,200),category=req.query.category||null,values=[];let where='WHERE 1=1';
+  if(category&&!z.string().uuid().safeParse(String(category)).success)return res.status(400).json({error:'معرّف التصنيف غير صالح'});
   if(q){values.push(q);where+=` AND (title ILIKE '%'||$1||'%' OR subject ILIKE '%'||$1||'%' OR extracted_text ILIKE '%'||$1||'%' OR document_number ILIKE '%'||$1||'%')`;}
-  if(category){values.push(category);where+=` AND category_id=$${values.length}`;}
+  if(category){values.push(String(category));where+=` AND category_id=${values.length}`;}
   const count=await pool.query(`SELECT COUNT(*)::int AS total FROM documents ${where}`,values);
   values.push(limit,page*limit-limit);
   const result=await pool.query(`SELECT id,title,document_number,subject,issuing_entity,document_date,category_id,original_name,mime_type,file_size,ocr_status,created_at FROM documents ${where} ORDER BY created_at DESC LIMIT $${values.length-1} OFFSET $${values.length}`,values);

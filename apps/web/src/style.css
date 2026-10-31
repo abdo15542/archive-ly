@@ -5,6 +5,8 @@
 
 .ocr-editor{width:100%;min-height:240px;resize:vertical;direction:auto;text-align:start;white-space:pre-wrap;line-height:1.9;border:1px solid #dce3ee;border-radius:10px;padding:14px;background:#fbfcfe;font:inherit;font-size:13px}.modal-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
 
+.metadata-form{grid-template-columns:repeat(2,minmax(0,1fr));margin:16px 0;max-height:34vh;overflow:auto}.metadata-form .metadata-wide{grid-column:1/-1}.metadata-form>button{grid-column:1/-1;justify-self:start}@media(max-width:600px){.metadata-form{grid-template-columns:1fr;max-height:40vh}.metadata-form .metadata-wide,.metadata-form>button{grid-column:auto}}
+
 .sidebar nav a{cursor:pointer;text-decoration:none}
 .admin-panel{display:grid;gap:20px}
 .panel-heading{display:flex;justify-content:space-between;align-items:center}

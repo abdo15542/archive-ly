@@ -26,16 +26,25 @@ router.post('/users',async(req,res,next)=>{
  }catch(e){if(e.code==='23505')return res.status(409).json({error:'البريد الإلكتروني مستخدم'});next(e);}
 });
 router.patch('/users/:id',async(req,res,next)=>{
+ const p=z.object({fullName:z.string().trim().min(2).max(160).optional(),role:z.enum(roles).optional(),isActive:z.boolean().optional()}).strict().safeParse(req.body);
+ if(!p.success||!Object.keys(p.data||{}).length)return res.status(400).json({error:'بيانات التعديل غير صحيحة'});
+ if(req.params.id===req.user.sub&&(p.data.isActive===false||p.data.role&&p.data.role!=='admin'))return res.status(400).json({error:'لا يمكنك تعطيل حسابك أو سحب صلاحية المسؤول من نفسك'});
+ const d=p.data,client=await pool.connect();
  try{
-  const p=z.object({fullName:z.string().trim().min(2).max(160).optional(),role:z.enum(roles).optional(),isActive:z.boolean().optional()}).strict().safeParse(req.body);
-  if(!p.success||!Object.keys(p.data||{}).length)return res.status(400).json({error:'بيانات التعديل غير صحيحة'});
-  if(req.params.id===req.user.sub&&(p.data.isActive===false||p.data.role&&p.data.role!=='admin'))return res.status(400).json({error:'لا يمكنك تعطيل حسابك أو سحب صلاحية المسؤول من نفسك'});
-  const d=p.data;
-  const r=await pool.query('UPDATE users SET full_name=COALESCE($2,full_name),role=COALESCE($3,role),is_active=COALESCE($4,is_active),updated_at=NOW() WHERE id=$1 RETURNING id,full_name,email,role,is_active,created_at',[req.params.id,d.fullName||null,d.role||null,d.isActive??null]);
-  if(!r.rowCount)return res.status(404).json({error:'المستخدم غير موجود'});
-  await pool.query("INSERT INTO audit_logs(actor_id,action,resource_type,resource_id,ip_address,details) VALUES($1,'user.updated','user',$2,$3,$4)",[req.user.sub,req.params.id,req.ip,JSON.stringify(d)]);
+  await client.query('BEGIN');
+  const current=await client.query('SELECT role,is_active FROM users WHERE id=$1 FOR UPDATE',[req.params.id]);
+  if(!current.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'المستخدم غير موجود'});}
+  const removesAdmin=current.rows[0].role==='admin'&&(d.role!==undefined&&d.role!=='admin'||d.isActive===false);
+  if(removesAdmin){
+   await client.query('SELECT pg_advisory_xact_lock($1)',[72910421]);
+   const count=await client.query("SELECT COUNT(*)::int AS total FROM users WHERE role='admin' AND is_active=true");
+   if(count.rows[0].total<=1){await client.query('ROLLBACK');return res.status(409).json({error:'لا يمكن إزالة آخر مسؤول نشط في النظام'});}
+  }
+  const r=await client.query('UPDATE users SET full_name=COALESCE($2,full_name),role=COALESCE($3,role),is_active=COALESCE($4,is_active),updated_at=NOW() WHERE id=$1 RETURNING id,full_name,email,role,is_active,created_at',[req.params.id,d.fullName||null,d.role||null,d.isActive??null]);
+  await client.query("INSERT INTO audit_logs(actor_id,action,resource_type,resource_id,ip_address,details) VALUES($1,'user.updated','user',$2,$3,$4)",[req.user.sub,req.params.id,req.ip,JSON.stringify(d)]);
+  await client.query('COMMIT');
   res.json({user:r.rows[0]});
- }catch(e){next(e);}
+ }catch(e){await client.query('ROLLBACK');next(e);}finally{client.release();}
 });
 router.get('/audit-logs',async(req,res,next)=>{
  try{

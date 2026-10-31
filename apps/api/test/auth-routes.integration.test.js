@@ -125,6 +125,20 @@ test('auth routes and document deletion preserve audit integrity', { skip: !proc
       ['وثيقة اختبار الحذف', 'test.txt', storedName, 'text/plain', 21, crypto.createHash('sha256').update('integration-test-file').digest('hex'), userId]
     );
     const documentId = document.rows[0].id;
+    const updatedDocument = await fetch(`${base}/documents/${documentId}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${loggedIn.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'وثيقة بعد التعديل', subject: 'اختبار ذرية سجل التدقيق' })
+    });
+    assert.equal(updatedDocument.status, 200);
+    const updatedPayload = await updatedDocument.json();
+    assert.equal(updatedPayload.document.title, 'وثيقة بعد التعديل');
+    const updateAudit = await pool.query(
+      "SELECT id FROM audit_logs WHERE actor_id=$1 AND action='document.updated' AND resource_id=$2",
+      [userId, documentId]
+    );
+    assert.equal(updateAudit.rowCount, 1);
+
     const deleted = await fetch(`${base}/documents/${documentId}`, {
       method: 'DELETE', headers: { authorization: `Bearer ${loggedIn.token}` }
     });

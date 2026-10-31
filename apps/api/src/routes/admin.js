@@ -16,13 +16,19 @@ router.get('/users',async(req,res,next)=>{
  }catch(e){next(e);}
 });
 router.post('/users',async(req,res,next)=>{
+ const p=z.object({fullName:z.string().trim().min(2).max(160),email:z.string().trim().email().max(254),password:z.string().min(10).max(128),role:z.enum(roles)}).safeParse(req.body);
+ if(!p.success)return res.status(400).json({error:'بيانات المستخدم غير صحيحة'});
  try{
-  const p=z.object({fullName:z.string().trim().min(2).max(160),email:z.string().trim().email().max(254),password:z.string().min(10).max(128),role:z.enum(roles)}).safeParse(req.body);
-  if(!p.success)return res.status(400).json({error:'بيانات المستخدم غير صحيحة'});
-  const hash=await bcrypt.hash(p.data.password,12);
-  const r=await pool.query('INSERT INTO users(full_name,email,password_hash,role) VALUES($1,$2,$3,$4) RETURNING id,full_name,email,role,is_active,created_at',[p.data.fullName,p.data.email.toLowerCase(),hash,p.data.role]);
-  await pool.query("INSERT INTO audit_logs(actor_id,action,resource_type,resource_id,ip_address) VALUES($1,'user.created','user',$2,$3)",[req.user.sub,r.rows[0].id,req.ip]);
-  res.status(201).json({user:r.rows[0]});
+  const hash=await bcrypt.hash(p.data.password,12),client=await pool.connect();
+  let created;
+  try{
+   await client.query('BEGIN');
+   const r=await client.query('INSERT INTO users(full_name,email,password_hash,role) VALUES($1,$2,$3,$4) RETURNING id,full_name,email,role,is_active,created_at',[p.data.fullName,p.data.email.toLowerCase(),hash,p.data.role]);
+   created=r.rows[0];
+   await client.query("INSERT INTO audit_logs(actor_id,action,resource_type,resource_id,ip_address,details) VALUES($1,'user.created','user',$2,$3,$4)",[req.user.sub,created.id,req.ip,JSON.stringify({role:created.role})]);
+   await client.query('COMMIT');
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+  res.status(201).json({user:created});
  }catch(e){if(e.code==='23505')return res.status(409).json({error:'البريد الإلكتروني مستخدم'});next(e);}
 });
 router.patch('/users/:id',async(req,res,next)=>{

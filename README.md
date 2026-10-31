@@ -14,16 +14,14 @@
 - PostgreSQL: بيانات الوثائق والمستخدمين وطابور المهام وسجل التدقيق.
 - Docker: تشغيل قاعدة البيانات والخادم والعامل مع مجلد ملفات دائم.
 
-## التشغيل المحلي باستخدام Docker
-1. أنشئ قيمة سرية طويلة لـ JWT:
-   `export JWT_SECRET="$(openssl rand -hex 32)"`
-2. شغّل الخدمات:
-   `docker compose up --build -d`
-3. تحقق من الخدمة:
-   `curl http://localhost:4000/health`
-4. افتح الواجهة أثناء التطوير:
-   `npm install && npm run dev:web`
-   ثم اضبط `VITE_API_URL=http://localhost:4000` عند الحاجة.
+## تشغيل نسخة متكاملة باستخدام Docker
+1. أنشئ ملف البيئة: `cp .env.example .env`.
+2. أنشئ سراً قوياً بالأمر `openssl rand -hex 32` وضع قيمة مستقلة في `JWT_SECRET`، وأنشئ كلمة مرور PostgreSQL قوية وضعها في `POSTGRES_PASSWORD`. لا ترفع `.env` إلى GitHub.
+3. شغّل قاعدة البيانات والواجهة وAPI وعامل OCR: `docker compose up --build -d`.
+4. افتح `http://localhost:4000`؛ الواجهة وAPI يعملان من نفس العنوان. تحقق من `curl http://localhost:4000/health`.
+5. شغّل النسخ التلقائي: `docker compose --profile tools up --build -d backup-scheduler`.
+
+في الإنتاج، اربط نطاقاً وTLS عبر reverse proxy موثوق. لا تعرض منفذ PostgreSQL للإنترنت. فعّل `DATABASE_SSL=true` عند استخدام قاعدة مُدارة تتطلب TLS.
 
 ## التشغيل دون Docker
 - Node.js 20+ وPostgreSQL 15+.
@@ -66,4 +64,5 @@
 ## الاختبارات
 - `npm test`: اختبارات API والتحقق من سلامة النسخ وسياسة الاحتفاظ.
 - `npm run build:web`: بناء واجهة الويب.
+- `docker build -t archive-ly .`: بناء صورة الإنتاج التي تحتوي على الواجهة وAPI وأدوات OCR.
 - GitHub Actions يشغّل الاختبارات وفحوص syntax وبناء الواجهة عند كل push إلى main.

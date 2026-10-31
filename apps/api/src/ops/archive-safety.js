@@ -25,7 +25,6 @@ export function validateArchiveTypes(verboseLines) {
   return true;
 }
 
-// Refuse symlinks and special files at every depth before creating a portable backup.
 export async function assertSafeUploadTree(directory) {
   const rootStat = await fs.lstat(directory);
   if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
@@ -44,13 +43,18 @@ export async function assertSafeUploadTree(directory) {
   return true;
 }
 
-
-// The outer backup must contain exactly the three expected regular files once each.
+// tar may preserve a harmless leading "./" from archives created with -C DIR . or
+// emit paths without it. Normalize that representation, but never accept nested,
+// absolute, duplicate, or unexpected entries in the outer backup container.
 export function validateBackupEntries(entries) {
   const allowed = ['database.dump', 'uploads.tar.gz', 'manifest.json'];
-  if (!Array.isArray(entries) || entries.length !== allowed.length ||
-      new Set(entries).size !== allowed.length ||
-      allowed.some(name => !entries.includes(name))) {
+  const normalized = Array.isArray(entries)
+    ? entries.map(entry => typeof entry === 'string' ? entry.replace(/^\.\//, '') : entry)
+    : entries;
+  if (!Array.isArray(normalized) || normalized.length !== allowed.length ||
+      new Set(normalized).size !== allowed.length ||
+      allowed.some(name => !normalized.includes(name)) ||
+      normalized.some(name => typeof name !== 'string' || name.includes('/') || name.includes('\\') || name === '' || name === '.' || name === '..')) {
     throw new Error('Backup archive must contain each required file exactly once');
   }
   return true;

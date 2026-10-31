@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateArchivePaths, validateArchiveTypes } from '../src/ops/archive-safety.js';
+import { validateArchivePaths, validateArchiveTypes, validateBackupEntries } from '../src/ops/archive-safety.js';
 
 test('accepts normal relative archive paths', () => {
   assert.equal(validateArchivePaths(['./', './2026', '2026/scan.pdf']), true);
@@ -67,14 +67,15 @@ test('rejects an uploads directory that is itself a symbolic link', async () => 
   }
 });
 
-
-test('requires each outer backup file exactly once', async () => {
-  const { validateBackupEntries } = await import('../src/ops/archive-safety.js');
+test('requires each outer backup file exactly once and accepts tar leading dot-slash paths', () => {
   assert.equal(validateBackupEntries(['database.dump', 'uploads.tar.gz', 'manifest.json']), true);
+  assert.equal(validateBackupEntries(['./database.dump', './uploads.tar.gz', './manifest.json']), true);
   for (const entries of [
     ['database.dump', 'uploads.tar.gz', 'uploads.tar.gz'],
     ['database.dump', 'manifest.json'],
-    ['database.dump', 'uploads.tar.gz', 'manifest.json', 'extra.txt']
+    ['database.dump', 'uploads.tar.gz', 'manifest.json', 'extra.txt'],
+    ['nested/database.dump', 'uploads.tar.gz', 'manifest.json'],
+    ['database.dump', 'uploads.tar.gz', '../manifest.json']
   ]) {
     assert.throws(() => validateBackupEntries(entries), /exactly once/);
   }

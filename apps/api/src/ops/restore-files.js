@@ -1,6 +1,5 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import os from 'node:os';
 
 /**
  * Install staged uploads before the database restore. If the database restore
@@ -12,7 +11,7 @@ export async function restoreWithUploadSwap({ uploadDir, stagedUploads, restoreD
   const target = path.resolve(uploadDir);
   const staged = path.resolve(stagedUploads);
   const parent = path.dirname(target);
-  if (path.dirname(staged) === target || staged === target || !staged.startsWith(parent + path.sep)) {
+  if (staged === target || !staged.startsWith(parent + path.sep)) {
     throw new Error('Staged uploads must be a sibling path under the uploads parent directory');
   }
 
@@ -29,6 +28,7 @@ export async function restoreWithUploadSwap({ uploadDir, stagedUploads, restoreD
   const previous = path.join(rollbackRoot, 'previous-uploads');
   let hadPrevious = false;
   let installed = false;
+  let rollbackFailed = false;
   try {
     try {
       const current = await fs.lstat(target);
@@ -49,27 +49,20 @@ export async function restoreWithUploadSwap({ uploadDir, stagedUploads, restoreD
       if (installed) await fs.rm(target, { recursive: true, force: true });
       if (hadPrevious) await fs.rename(previous, target);
     } catch (rollbackError) {
+      rollbackFailed = true;
       throw new AggregateError([error, rollbackError], 'Database restore failed and uploads rollback also failed');
     }
     throw error;
   } finally {
-    // If rollback itself failed, retain the rollback directory for manual recovery.
-    if (!hadPrevious || installed || await exists(previous)) {
+    // Preserve the previous copy if rollback itself failed; it may be needed
+    // for manual recovery. Otherwise the temporary rollback directory is safe
+    // to remove (on success it contains the superseded uploads).
+    if (!rollbackFailed) {
       await fs.rm(rollbackRoot, { recursive: true, force: true }).catch(error => {
-        console.error('Could not remove restore rollback directory:', error.message);
+        console.error('Restore rollback cleanup is pending:', error.message);
       });
     }
   }
 
-  // A cleanup failure must not turn a successful database+uploads restore into
-  // a reported failure: the old copy is safe to remove manually later.
-  await fs.rm(rollbackRoot, { recursive: true, force: true }).catch(error => {
-    console.error('Restore succeeded; old uploads cleanup is pending:', error.message);
-  });
   return { status: 'restored' };
-}
-
-async function exists(filePath) {
-  try { await fs.lstat(filePath); return true; }
-  catch (error) { if (error.code === 'ENOENT') return false; throw error; }
 }

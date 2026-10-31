@@ -65,6 +65,22 @@ test('auth routes and document deletion preserve audit integrity', { skip: !proc
     const loggedIn = await login.json();
     assert.ok(loggedIn.token);
 
+    const invalidDocumentId = 'not-a-valid-uuid';
+    const invalidDocumentHeaders = { authorization: `Bearer ${loggedIn.token}`, 'content-type': 'application/json' };
+    const invalidDocumentRequests = [
+      fetch(`${base}/documents/${invalidDocumentId}`, { headers: invalidDocumentHeaders }),
+      fetch(`${base}/documents/${invalidDocumentId}`, { method: 'PATCH', headers: invalidDocumentHeaders, body: JSON.stringify({ title: 'عنوان صالح' }) }),
+      fetch(`${base}/documents/${invalidDocumentId}`, { method: 'DELETE', headers: invalidDocumentHeaders }),
+      fetch(`${base}/documents/${invalidDocumentId}/file`, { headers: invalidDocumentHeaders }),
+      fetch(`${base}/documents/${invalidDocumentId}/ocr/retry`, { method: 'POST', headers: invalidDocumentHeaders }),
+      fetch(`${base}/documents/${invalidDocumentId}/ocr`, { method: 'PATCH', headers: invalidDocumentHeaders, body: JSON.stringify({ text: 'نص' }) })
+    ];
+    const invalidDocumentResponses = await Promise.all(invalidDocumentRequests);
+    for (const response of invalidDocumentResponses) {
+      assert.equal(response.status, 400);
+      assert.equal((await response.json()).error, 'معرّف الوثيقة غير صالح');
+    }
+
     const invalidCategoryFilter = await fetch(`${base}/documents?category=not-a-uuid`, {
       headers: { authorization: `Bearer ${loggedIn.token}` }
     });

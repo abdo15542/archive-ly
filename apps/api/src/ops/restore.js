@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import { validateArchivePaths, validateArchiveTypes } from './archive-safety.js';
 import { fileURLToPath } from 'node:url';
 
 const run=promisify(execFile);
@@ -35,12 +36,9 @@ try{
  await fs.mkdir(stagedUploads);
  const uploadsArchive=path.join(work,'uploads.tar.gz');
  const uploadEntries=(await run('tar',['-tzf',uploadsArchive])).stdout.split('\n').filter(Boolean);
- for(const entry of uploadEntries){
-  const normalized=path.posix.normalize(entry.startsWith('./')?entry.slice(2):entry);
-  if(path.posix.isAbsolute(entry)||normalized==='..'||normalized.startsWith('../'))throw new Error('Upload archive contains an unsafe path');
- }
+ validateArchivePaths(uploadEntries);
  const verbose=(await run('tar',['-tvzf',uploadsArchive])).stdout.split('\n').filter(Boolean);
- if(verbose.some(line=>!['-','d'].includes(line[0])))throw new Error('Upload archive contains a link or special file');
+ validateArchiveTypes(verbose);
  await run('tar',['-xzf',uploadsArchive,'-C',stagedUploads]);
  console.log('Checksums verified. Restoring database...');
  await run('pg_restore',['--clean','--if-exists','--no-owner','--no-acl','--single-transaction','--dbname',databaseUrl,path.join(work,'database.dump')]);

@@ -6,6 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { sha256File } from './file-hash.js';
 import { validateArchivePaths, validateArchiveTypes, validateBackupEntries } from './archive-safety.js';
+import { restoreWithUploadSwap } from './restore-files.js';
 import { fileURLToPath } from 'node:url';
 
 const run=promisify(execFile);
@@ -19,12 +20,12 @@ if(!databaseUrl||!archive){
  process.exit(1);
 }
 const work=await fs.mkdtemp(path.join(os.tmpdir(),'archive-ly-restore-'));
-let oldUploads='';
+let stageRoot='';
 try{
  const archivePath=path.resolve(archive);
- const outerListing=(await run('tar',['-tzf',archivePath])).stdout.split('\n').filter(Boolean);
+ const outerListing=(await run('tar',['-tzf',archivePath])).stdout.split('\\n').filter(Boolean);
  validateBackupEntries(outerListing);
- const outerTypes=(await run('tar',['-tvzf',archivePath])).stdout.split('\n').filter(Boolean);
+ const outerTypes=(await run('tar',['-tvzf',archivePath])).stdout.split('\\n').filter(Boolean);
  validateArchiveTypes(outerTypes);
  await run('tar',['-xzf',archivePath,'-C',work]);
  const manifest=JSON.parse(await fs.readFile(path.join(work,'manifest.json'),'utf8'));
@@ -32,29 +33,31 @@ try{
  for(const name of ['database.dump','uploads.tar.gz']){
   if(await sha256File(path.join(work,name))!==manifest.files[name])throw new Error('SHA-256 verification failed for '+name);
  }
- const stagedUploads=path.join(work,'restored-uploads');
+ // Stage beside the live uploads directory so the final rename stays on one filesystem.
+ const uploadParent=path.dirname(uploadDir);
+ await fs.mkdir(uploadParent,{recursive:true});
+ stageRoot=await fs.mkdtemp(path.join(uploadParent,'.archive-ly-restore-stage-'));
+ const stagedUploads=path.join(stageRoot,'uploads');
  await fs.mkdir(stagedUploads);
  const uploadsArchive=path.join(work,'uploads.tar.gz');
- const uploadEntries=(await run('tar',['-tzf',uploadsArchive])).stdout.split('\n').filter(Boolean);
+ const uploadEntries=(await run('tar',['-tzf',uploadsArchive])).stdout.split('\\n').filter(Boolean);
  validateArchivePaths(uploadEntries);
- const verbose=(await run('tar',['-tvzf',uploadsArchive])).stdout.split('\n').filter(Boolean);
+ const verbose=(await run('tar',['-tvzf',uploadsArchive])).stdout.split('\\n').filter(Boolean);
  validateArchiveTypes(verbose);
  await run('tar',['-xzf',uploadsArchive,'-C',stagedUploads]);
- console.log('Checksums verified. Restoring database...');
- await run('pg_restore',['--clean','--if-exists','--no-owner','--no-acl','--single-transaction','--dbname',databaseUrl,path.join(work,'database.dump')]);
- await fs.mkdir(path.dirname(uploadDir),{recursive:true});
- try{
-  await fs.access(uploadDir);
-  oldUploads=uploadDir+'.pre-restore-'+Date.now();
-  await fs.rename(uploadDir,oldUploads);
- }catch(e){if(e.code!=='ENOENT')throw e;}
- try{await fs.rename(stagedUploads,uploadDir);}
- catch(e){if(oldUploads)await fs.rename(oldUploads,uploadDir);throw e;}
- if(oldUploads)await fs.rm(oldUploads,{recursive:true,force:true});
+ console.log('Checksums verified. Switching uploads safely and restoring database...');
+ await restoreWithUploadSwap({
+  uploadDir,
+  stagedUploads,
+  restoreDatabase:()=>run('pg_restore',['--clean','--if-exists','--no-owner','--no-acl','--single-transaction','--dbname',databaseUrl,path.join(work,'database.dump')])
+ });
  console.log(JSON.stringify({status:'restored',backup:archivePath,createdAt:manifest.createdAt,uploadDir},null,2));
 }catch(error){
  console.error('Restore failed:',error.stderr||error.message);
  process.exitCode=1;
 }finally{
  await fs.rm(work,{recursive:true,force:true});
+ if(stageRoot)await fs.rm(stageRoot,{recursive:true,force:true}).catch(error=>{
+  console.error('Restore staging cleanup required:',error.message);
+ });
 }

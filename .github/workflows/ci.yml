@@ -30,7 +30,9 @@ jobs:
           node-version: 22
       - run: npm install --include=optional --no-audit --no-fund
       - name: Ensure Linux Rollup native binary is installed
-        run: npm install --no-save --package-lock=false "@rollup/rollup-linux-x64-gnu@$(node -p "require('./node_modules/rollup/package.json').version")"
+        run: |
+          ROLLUP_VERSION=$(node -p "require('./node_modules/rollup/package.json').version")
+          npm install --no-save --package-lock=false "@rollup/rollup-linux-x64-gnu@$ROLLUP_VERSION"
       - name: Install OCR system tools
         run: sudo apt-get update && sudo apt-get install -y poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-ara librsvg2-bin fonts-noto-core
       - run: npm run db:migrate

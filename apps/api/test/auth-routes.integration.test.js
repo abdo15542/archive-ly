@@ -5,6 +5,7 @@ import { mkdtemp, writeFile, access, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import jwt from 'jsonwebtoken';
 
 process.env.JWT_SECRET ||= 'archive-ly-integration-test-secret-with-sufficient-entropy';
 
@@ -14,6 +15,7 @@ test('auth routes and document deletion preserve audit integrity', { skip: !proc
   const { pool } = await import('../src/db/pool.js');
   const { default: authRoutes } = await import('../src/routes/auth.js');
   const { default: documentRoutes } = await import('../src/routes/documents.js');
+  const { default: categoryRoutes } = await import('../src/routes/categories.js');
   const existing = await pool.query('SELECT COUNT(*)::int AS count FROM users');
   if (existing.rows[0].count > 0) {
     await pool.end();
@@ -26,6 +28,7 @@ test('auth routes and document deletion preserve audit integrity', { skip: !proc
   app.use(express.json());
   app.use('/auth', authRoutes);
   app.use('/documents', documentRoutes);
+  app.use('/categories', categoryRoutes);
   app.use((error, _req, res, _next) => res.status(500).json({ error: error.message }));
   const server = app.listen(0, '127.0.0.1');
   await new Promise((resolve, reject) => {
@@ -61,6 +64,49 @@ test('auth routes and document deletion preserve audit integrity', { skip: !proc
     assert.equal(login.status, 200);
     const loggedIn = await login.json();
     assert.ok(loggedIn.token);
+
+    // Role boundaries: viewers are read-only; archivists can manage records but cannot delete categories.
+    const viewerToken = jwt.sign({ sub: registered.user.id, role: 'viewer' }, process.env.JWT_SECRET);
+    const archivistToken = jwt.sign({ sub: registered.user.id, role: 'archivist' }, process.env.JWT_SECRET);
+    const viewerHeaders = { authorization: `Bearer ${viewerToken}`, 'content-type': 'application/json' };
+    const archivistHeaders = { authorization: `Bearer ${archivistToken}`, 'content-type': 'application/json' };
+
+    const viewerCategoryCreate = await fetch(`${base}/categories`, {
+      method: 'POST', headers: viewerHeaders, body: JSON.stringify({ name: 'تصنيف ممنوع' })
+    });
+    assert.equal(viewerCategoryCreate.status, 403);
+    const viewerDocumentCreate = await fetch(`${base}/documents`, {
+      method: 'POST', headers: viewerHeaders
+    });
+    assert.equal(viewerDocumentCreate.status, 403);
+    const viewerDocumentUpdate = await fetch(`${base}/documents/${crypto.randomUUID()}`, {
+      method: 'PATCH', headers: viewerHeaders, body: JSON.stringify({ title: 'تعديل ممنوع' })
+    });
+    assert.equal(viewerDocumentUpdate.status, 403);
+    const viewerDocumentDelete = await fetch(`${base}/documents/${crypto.randomUUID()}`, {
+      method: 'DELETE', headers: viewerHeaders
+    });
+    assert.equal(viewerDocumentDelete.status, 403);
+
+    const categoryCreate = await fetch(`${base}/categories`, {
+      method: 'POST', headers: archivistHeaders,
+      body: JSON.stringify({ name: `تصنيف اختبار ${crypto.randomUUID()}`, description: 'اختبار صلاحيات' })
+    });
+    assert.equal(categoryCreate.status, 201);
+    const category = (await categoryCreate.json()).category;
+    const categoryUpdate = await fetch(`${base}/categories/${category.id}`, {
+      method: 'PATCH', headers: archivistHeaders,
+      body: JSON.stringify({ description: 'تم تحديثه بواسطة أمين الأرشيف' })
+    });
+    assert.equal(categoryUpdate.status, 200);
+    const archivistCategoryDelete = await fetch(`${base}/categories/${category.id}`, {
+      method: 'DELETE', headers: archivistHeaders
+    });
+    assert.equal(archivistCategoryDelete.status, 403);
+    const adminCategoryDelete = await fetch(`${base}/categories/${category.id}`, {
+      method: 'DELETE', headers: { authorization: `Bearer ${loggedIn.token}` }
+    });
+    assert.equal(adminCategoryDelete.status, 204);
 
     const invalidLogin = await fetch(`${base}/auth/login`, {
       method: 'POST', headers: { 'content-type': 'application/json' },

@@ -58,15 +58,29 @@ async function claim(){
 async function processJob(job){
  try{
   const text=await extractDocument(job);
-  await pool.query("UPDATE documents SET extracted_text=$2,ocr_status='completed',updated_at=NOW() WHERE id=$1",[job.document_id,text]);
-  await pool.query("UPDATE ocr_jobs SET status='completed',last_error=NULL,locked_at=NULL,updated_at=NOW() WHERE id=$1",[job.id]);
+  const client=await pool.connect();
+  try{
+   await client.query('BEGIN');
+   await client.query("UPDATE documents SET extracted_text=$2,ocr_status='completed',updated_at=NOW() WHERE id=$1",[job.document_id,text]);
+   await client.query("UPDATE ocr_jobs SET status='completed',last_error=NULL,locked_at=NULL,updated_at=NOW() WHERE id=$1",[job.id]);
+   await client.query('COMMIT');
+  }catch(error){await client.query('ROLLBACK');throw error;}
+  finally{client.release();}
   console.log('OCR completed:',job.document_id,'characters:',text.length);
  }catch(error){
-  const result=await pool.query('SELECT attempts FROM ocr_jobs WHERE id=$1',[job.id]);
-  const attempts=result.rows[0]?.attempts||1;
-  const status=attempts>=3?'failed':'queued';
-  await pool.query('UPDATE ocr_jobs SET status=$2,last_error=$3,locked_at=NULL,updated_at=NOW() WHERE id=$1',[job.id,status,String(error.message).slice(0,2000)]);
-  await pool.query('UPDATE documents SET ocr_status=$2,updated_at=NOW() WHERE id=$1',[job.document_id,status==='failed'?'failed':'pending']);
+  const client=await pool.connect();
+  try{
+   await client.query('BEGIN');
+   const result=await client.query('SELECT attempts FROM ocr_jobs WHERE id=$1 FOR UPDATE',[job.id]);
+   const attempts=result.rows[0]?.attempts||1;
+   const status=attempts>=3?'failed':'queued';
+   await client.query('UPDATE ocr_jobs SET status=$2,last_error=$3,locked_at=NULL,updated_at=NOW() WHERE id=$1',[job.id,status,String(error.message).slice(0,2000)]);
+   await client.query('UPDATE documents SET ocr_status=$2,updated_at=NOW() WHERE id=$1',[job.document_id,status==='failed'?'failed':'pending']);
+   await client.query('COMMIT');
+  }catch(persistError){
+   await client.query('ROLLBACK');
+   throw persistError;
+  }finally{client.release();}
   console.error('OCR job failed:',job.document_id,error.message);
  }
 }

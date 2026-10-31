@@ -76,7 +76,7 @@ test('OCR worker requeues a failed first attempt and marks the document pending'
       extractDocument: async () => { throw new Error('OCR binary temporarily unavailable'); },
       logger: { info() {}, error() {} }
     });
-    const result = await worker.runOnce();
+    const result = await worker.runOnce({ documentId });
     assert.equal(result.status, 'queued');
     const persisted = await pool.query(
       `SELECT j.status AS job_status,j.attempts,j.last_error,d.ocr_status
@@ -115,7 +115,7 @@ test('OCR worker rejects empty extraction and eventually fails exhausted attempt
       extractDocument: async () => '  ',
       logger: { info() {}, error() {} }
     });
-    const result = await worker.runOnce();
+    const result = await worker.runOnce({ documentId });
     assert.equal(result.status, 'failed');
     const persisted = await pool.query(
       `SELECT j.status AS job_status,j.attempts,d.ocr_status,j.last_error

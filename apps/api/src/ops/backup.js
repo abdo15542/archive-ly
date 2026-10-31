@@ -14,6 +14,7 @@ const backupDir=path.resolve(process.env.BACKUP_DIR||path.resolve(here,'../../..
 const databaseUrl=process.env.DATABASE_URL;
 const digest=async file=>crypto.createHash('sha256').update(await fs.readFile(file)).digest('hex');
 const stamp=new Date().toISOString().replace(/[:.]/g,'-');
+let temporaryOutput='';
 
 if(!databaseUrl){console.error('DATABASE_URL is required');process.exit(1);}
 await fs.mkdir(backupDir,{recursive:true});
@@ -27,9 +28,16 @@ try{
  await run('tar',['-czf',uploads,'-C',uploadDir,'.']);
  const manifest={format:'archive-ly-backup-v1',createdAt:new Date().toISOString(),files:{'database.dump':await digest(dump),'uploads.tar.gz':await digest(uploads)}};
  await fs.writeFile(path.join(work,'manifest.json'),JSON.stringify(manifest,null,2)+'\n',{mode:0o600});
- const output=path.join(backupDir,'archive-ly-backup-'+stamp+'.tar.gz');
- await run('tar',['-czf',output,'-C',work,'database.dump','uploads.tar.gz','manifest.json']);
- await fs.chmod(output,0o600);
+ const output=path.join(backupDir,'archive-ly-backup-'+stamp+'-'+process.pid+'.tar.gz');
+ temporaryOutput=output+'.partial';
+ await run('tar',['-czf',temporaryOutput,'-C',work,'database.dump','uploads.tar.gz','manifest.json']);
+ await fs.chmod(temporaryOutput,0o600);
+ // Publish only a complete archive: rename is atomic because the temporary file is on the same filesystem.
+ await fs.rename(temporaryOutput,output);
+ temporaryOutput='';
  console.log(JSON.stringify({status:'created',file:output,sha256:await digest(output),manifest},null,2));
 }catch(error){console.error('Backup failed:',error.stderr||error.message);process.exitCode=1;}
-finally{await fs.rm(work,{recursive:true,force:true});}
+finally{
+ if(temporaryOutput)await fs.rm(temporaryOutput,{force:true});
+ await fs.rm(work,{recursive:true,force:true});
+}

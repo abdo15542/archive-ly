@@ -101,6 +101,47 @@ test('auth routes and document deletion preserve audit integrity', { skip: !proc
     const viewerHeaders = { authorization: `Bearer ${viewerToken}`, 'content-type': 'application/json' };
     const archivistHeaders = { authorization: `Bearer ${archivistToken}`, 'content-type': 'application/json' };
 
+    // Exercise the real multipart upload -> database -> OCR queue -> search -> file download path.
+    const uploadForm = new FormData();
+    const uploadPdf = Buffer.from('%PDF-1.4\\n% Archive LY upload integration fixture\\n', 'utf8');
+    uploadForm.append('title', 'وثيقة تكامل رفع وبحث');
+    uploadForm.append('subject', 'اختبار دورة رفع الوثائق وفهرستها');
+    uploadForm.append('file', new Blob([uploadPdf], { type: 'application/pdf' }), 'integration.pdf');
+    const uploadedResponse = await fetch(`${base}/documents`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${loggedIn.token}` },
+      body: uploadForm
+    });
+    assert.equal(uploadedResponse.status, 201);
+    const uploadedPayload = await uploadedResponse.json();
+    const uploadedId = uploadedPayload.document.id;
+    assert.equal(uploadedPayload.ocr.status, 'queued');
+
+    const queuedJob = await pool.query(
+      "SELECT status FROM ocr_jobs WHERE document_id=$1 ORDER BY id DESC LIMIT 1",
+      [uploadedId]
+    );
+    assert.equal(queuedJob.rows[0]?.status, 'queued');
+
+    const searchable = await fetch(`${base}/documents?q=${encodeURIComponent('وثيقة تكامل رفع وبحث')}`, {
+      headers: { authorization: `Bearer ${loggedIn.token}` }
+    });
+    assert.equal(searchable.status, 200);
+    const searchablePayload = await searchable.json();
+    assert.ok(searchablePayload.documents.some(item => item.id === uploadedId));
+
+    const downloaded = await fetch(`${base}/documents/${uploadedId}/file`, {
+      headers: { authorization: `Bearer ${loggedIn.token}` }
+    });
+    assert.equal(downloaded.status, 200);
+    assert.deepEqual(Buffer.from(await downloaded.arrayBuffer()), uploadPdf);
+
+    const uploadedDelete = await fetch(`${base}/documents/${uploadedId}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${loggedIn.token}` }
+    });
+    assert.equal(uploadedDelete.status, 204);
+
     const viewerCategoryCreate = await fetch(`${base}/categories`, {
       method: 'POST', headers: viewerHeaders, body: JSON.stringify({ name: 'تصنيف ممنوع' })
     });
